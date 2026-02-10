@@ -1,0 +1,9 @@
+{
+  "name": "Claude Assist",
+  "documentation": "https://github.com/toml0006/claude-assist",
+  "issue_tracker": "https://github.com/toml0006/claude-assist/issues",
+  "domains": ["conversation"],
+  "iot_class": "cloud_polling",
+  "homeassistant": "2024.10.0",
+  "render_readme": true
+}

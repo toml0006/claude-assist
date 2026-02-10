@@ -1,0 +1,13 @@
+{
+  "domain": "claude_assist",
+  "name": "Claude Assist",
+  "after_dependencies": ["assist_pipeline", "intent"],
+  "codeowners": ["@toml0006"],
+  "config_flow": true,
+  "dependencies": ["conversation"],
+  "documentation": "https://github.com/toml0006/claude-assist",
+  "integration_type": "service",
+  "iot_class": "cloud_polling",
+  "requirements": ["anthropic==0.78.0", "httpx>=0.27.0"],
+  "version": "1.0.0"
+}
