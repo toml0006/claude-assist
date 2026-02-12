@@ -175,15 +175,16 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                     async_client = get_async_client(self.hass)
                     response = await async_client.post(
                         OAUTH_TOKEN_URL,
-                        data={
+                        json={
                             "grant_type": "authorization_code",
                             "code": auth_code,
                             "redirect_uri": redirect_uri,
                             "client_id": OAUTH_CLIENT_ID,
                             "code_verifier": self._code_verifier,
+                            "state": self._state,
                         },
                         headers={
-                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Content-Type": "application/json",
                         },
                     )
                     response.raise_for_status()
