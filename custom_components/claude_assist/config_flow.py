@@ -74,7 +74,7 @@ from .const import (
     NON_THINKING_MODELS,
     OAUTH_AUTHORIZE_URL,
     OAUTH_CLIENT_ID,
-    OAUTH_REDIRECT_PATH,
+    OAUTH_REDIRECT_URI,
     OAUTH_SCOPES,
     OAUTH_TOKEN_URL,
     WEB_SEARCH_UNSUPPORTED_MODELS,
@@ -158,33 +158,37 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             # User has submitted the authorization code
-            auth_code = user_input.get("auth_code", "").strip()
+            raw_input = user_input.get("auth_code", "").strip()
             # Handle case where user pastes the full redirect URL
-            if "code=" in auth_code:
+            if "code=" in raw_input:
                 from urllib.parse import urlparse, parse_qs
-                parsed = urlparse(auth_code)
+                parsed = urlparse(raw_input)
                 code_values = parse_qs(parsed.query).get("code", [])
                 if code_values:
-                    auth_code = code_values[0]
-            # The callback page displays "code#state" together — strip the state
-            if "#" in auth_code:
-                auth_code = auth_code.split("#")[0]
+                    raw_input = code_values[0]
+            # The callback page displays "code#state" — split them
+            if "#" in raw_input:
+                parts = raw_input.split("#", 1)
+                auth_code = parts[0]
+                callback_state = parts[1]
+            else:
+                auth_code = raw_input
+                callback_state = self._state
             if not auth_code:
                 errors["base"] = "no_auth_code"
             else:
                 # Exchange the auth code for tokens
                 try:
-                    redirect_uri = self._get_redirect_uri()
                     async_client = get_async_client(self.hass)
                     response = await async_client.post(
                         OAUTH_TOKEN_URL,
                         json={
                             "grant_type": "authorization_code",
                             "code": auth_code,
-                            "redirect_uri": redirect_uri,
+                            "state": callback_state,
+                            "redirect_uri": OAUTH_REDIRECT_URI,
                             "client_id": OAUTH_CLIENT_ID,
                             "code_verifier": self._code_verifier,
-                            "state": self._state,
                         },
                         headers={
                             "Content-Type": "application/json",
@@ -238,16 +242,16 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                         ],
                     )
 
-        # Generate PKCE pair and state for the OAuth flow
+        # Generate PKCE pair — state = verifier (matches Claude Code / pi-ai)
         self._code_verifier, code_challenge = _generate_pkce_pair()
-        self._state = secrets.token_urlsafe(32)
-        redirect_uri = self._get_redirect_uri()
+        self._state = self._code_verifier
 
         auth_params = urlencode(
             {
-                "response_type": "code",
+                "code": "true",
                 "client_id": OAUTH_CLIENT_ID,
-                "redirect_uri": redirect_uri,
+                "response_type": "code",
+                "redirect_uri": OAUTH_REDIRECT_URI,
                 "scope": OAUTH_SCOPES,
                 "code_challenge": code_challenge,
                 "code_challenge_method": "S256",
@@ -265,15 +269,10 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             ),
             description_placeholders={
                 "auth_url": auth_url,
-                "redirect_uri": redirect_uri,
+                "redirect_uri": OAUTH_REDIRECT_URI,
             },
             errors=errors or None,
         )
-
-    def _get_redirect_uri(self) -> str:
-        """Get the redirect URI for OAuth."""
-        # Use Anthropic's manual redirect page which displays the code for copy/paste
-        return "https://platform.claude.com/oauth/code/callback"
 
     @classmethod
     @callback

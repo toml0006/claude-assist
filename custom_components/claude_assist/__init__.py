@@ -29,6 +29,7 @@ from .const import (
     DEFAULT_CONVERSATION_NAME,
     DOMAIN,
     LOGGER,
+    OAUTH_BETA_FLAGS,
     OAUTH_CLIENT_ID,
     OAUTH_TOKEN_URL,
     TOKEN_REFRESH_INTERVAL,
@@ -36,9 +37,6 @@ from .const import (
 
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
-
-# OAuth beta header required for Bearer token auth with the Anthropic API
-OAUTH_BETA = "oauth-2025-04-20"
 
 type ClaudeAssistConfigEntry = ConfigEntry[anthropic.AsyncClient]
 
@@ -64,9 +62,8 @@ async def _async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> str |
             OAUTH_TOKEN_URL,
             json={
                 "grant_type": "refresh_token",
-                "refresh_token": refresh_token,
                 "client_id": OAUTH_CLIENT_ID,
-                "scope": "user:inference user:profile",
+                "refresh_token": refresh_token,
             },
             headers={"Content-Type": "application/json"},
         )
@@ -93,14 +90,17 @@ async def _async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> str |
 def _create_client(hass: HomeAssistant, access_token: str) -> anthropic.AsyncClient:
     """Create an Anthropic async client using OAuth access token.
 
-    OAuth tokens require the anthropic-beta: oauth-2025-04-20 header
-    and must be sent as Authorization: Bearer (via auth_token parameter).
+    Mimics Claude Code's headers exactly — OAuth tokens require specific
+    beta flags and headers to be accepted by the Anthropic API.
     """
     return anthropic.AsyncAnthropic(
+        api_key=None,
         auth_token=access_token,
         http_client=get_async_client(hass),
         default_headers={
-            "anthropic-beta": OAUTH_BETA,
+            "anthropic-beta": OAUTH_BETA_FLAGS,
+            "user-agent": "claude-cli/2.1.2 (external, cli)",
+            "x-app": "cli",
         },
     )
 
