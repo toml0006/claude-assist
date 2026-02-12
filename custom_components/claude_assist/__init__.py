@@ -37,8 +37,8 @@ from .const import (
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-# Endpoint to convert OAuth token to API key (same as Claude Code CLI)
-API_KEY_URL = "https://api.anthropic.com/api/oauth/claude_cli/create_api_key"
+# OAuth beta header required for Bearer token auth with the Anthropic API
+OAUTH_BETA = "oauth-2025-04-20"
 
 type ClaudeAssistConfigEntry = ConfigEntry[anthropic.AsyncClient]
 
@@ -48,43 +48,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return True
 
 
-async def _async_create_api_key(hass: HomeAssistant, oauth_token: str) -> str | None:
-    """Convert an OAuth access token to an API key.
-
-    Claude Code does this same conversion — OAuth tokens can't be used
-    directly with /v1/messages, they must be exchanged for an API key first.
-    """
-    try:
-        async_client = get_async_client(hass)
-        response = await async_client.post(
-            API_KEY_URL,
-            content=None,
-            headers={"Authorization": f"Bearer {oauth_token}"},
-        )
-        if response.status_code != 200:
-            LOGGER.error(
-                "Failed to create API key: %s %s - %s",
-                response.status_code,
-                response.reason_phrase,
-                response.text,
-            )
-            return None
-        data = response.json()
-        api_key = data.get("raw_key")
-        if api_key:
-            LOGGER.debug("Successfully created API key from OAuth token")
-            return api_key
-        LOGGER.error("No raw_key in API key response: %s", data)
-        return None
-    except httpx.HTTPError as err:
-        LOGGER.error("Failed to create API key from OAuth token: %s", err)
-        return None
-
-
 async def _async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> str | None:
-    """Refresh the OAuth access token and convert to API key.
+    """Refresh the OAuth access token.
 
-    Returns a usable API key, or None on failure.
+    Returns the new access token, or None on failure.
     """
     refresh_token = entry.data.get(CONF_REFRESH_TOKEN)
     if not refresh_token:
@@ -109,27 +76,32 @@ async def _async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> str |
         LOGGER.error("Failed to refresh token: %s", err)
         return None
 
-    access_token = token_data["access_token"]
     new_data = {**entry.data}
-    new_data[CONF_ACCESS_TOKEN] = access_token
+    new_data[CONF_ACCESS_TOKEN] = token_data["access_token"]
     if "refresh_token" in token_data:
         new_data[CONF_REFRESH_TOKEN] = token_data["refresh_token"]
     expires_in = token_data.get("expires_in", 28800)
     new_data[CONF_EXPIRES_AT] = time.time() + expires_in
 
     hass.config_entries.async_update_entry(entry, data=new_data)
-    LOGGER.debug("Successfully refreshed OAuth token, expires in %s seconds", expires_in)
+    LOGGER.debug(
+        "Successfully refreshed OAuth token, expires in %s seconds", expires_in
+    )
+    return token_data["access_token"]
 
-    # Convert the new OAuth token to an API key
-    api_key = await _async_create_api_key(hass, access_token)
-    return api_key
 
+def _create_client(hass: HomeAssistant, access_token: str) -> anthropic.AsyncClient:
+    """Create an Anthropic async client using OAuth access token.
 
-def _create_client(hass: HomeAssistant, api_key: str) -> anthropic.AsyncClient:
-    """Create an Anthropic async client using an API key."""
+    OAuth tokens require the anthropic-beta: oauth-2025-04-20 header
+    and must be sent as Authorization: Bearer (via auth_token parameter).
+    """
     return anthropic.AsyncAnthropic(
-        api_key=api_key,
+        auth_token=access_token,
         http_client=get_async_client(hass),
+        default_headers={
+            "anthropic-beta": OAUTH_BETA,
+        },
     )
 
 
@@ -143,32 +115,34 @@ async def async_setup_entry(
     # Refresh token if expired or close to expiry (within 10 minutes)
     if time.time() > (expires_at - 600):
         LOGGER.debug("Access token expired or near expiry, refreshing...")
-        api_key = await _async_refresh_token(hass, entry)
-        if not api_key:
+        access_token = await _async_refresh_token(hass, entry)
+        if not access_token:
             raise ConfigEntryNotReady("Failed to refresh OAuth token")
-    else:
-        # Convert current OAuth token to API key
-        api_key = await _async_create_api_key(hass, access_token)
-        if not api_key:
-            # Token might be stale, try refreshing
-            api_key = await _async_refresh_token(hass, entry)
-            if not api_key:
-                raise ConfigEntryNotReady("Failed to create API key from OAuth token")
 
-    client = _create_client(hass, api_key)
+    client = _create_client(hass, access_token)
 
-    # Validate the API key works
+    # Validate the token works
     try:
-        await client.models.list(timeout=10.0)
+        await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "hi"}],
+            timeout=15.0,
+        )
     except anthropic.AuthenticationError as err:
-        LOGGER.error("API key validation failed: %s", err)
+        LOGGER.error("Invalid OAuth token: %s", err)
         # Try refreshing once more
-        api_key = await _async_refresh_token(hass, entry)
-        if not api_key:
+        access_token = await _async_refresh_token(hass, entry)
+        if not access_token:
             return False
-        client = _create_client(hass, api_key)
+        client = _create_client(hass, access_token)
         try:
-            await client.models.list(timeout=10.0)
+            await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "hi"}],
+                timeout=15.0,
+            )
         except anthropic.AuthenticationError as err2:
             LOGGER.error("Token refresh did not resolve auth error: %s", err2)
             return False
@@ -177,12 +151,12 @@ async def async_setup_entry(
 
     entry.runtime_data = client
 
-    # Set up periodic token refresh (get new OAuth token + convert to API key)
+    # Set up periodic token refresh
     async def _periodic_refresh(_now: datetime.datetime) -> None:
-        """Periodically refresh the OAuth token and API key."""
-        new_api_key = await _async_refresh_token(hass, entry)
-        if new_api_key:
-            entry.runtime_data = _create_client(hass, new_api_key)
+        """Periodically refresh the OAuth token."""
+        new_token = await _async_refresh_token(hass, entry)
+        if new_token:
+            entry.runtime_data = _create_client(hass, new_token)
 
     entry.async_on_unload(
         async_track_time_interval(
