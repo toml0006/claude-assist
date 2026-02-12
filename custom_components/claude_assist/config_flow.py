@@ -166,6 +166,9 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                 code_values = parse_qs(parsed.query).get("code", [])
                 if code_values:
                     auth_code = code_values[0]
+            # The callback page displays "code#state" together — strip the state
+            if "#" in auth_code:
+                auth_code = auth_code.split("#")[0]
             if not auth_code:
                 errors["base"] = "no_auth_code"
             else:
