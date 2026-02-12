@@ -94,6 +94,9 @@ def _create_client(hass: HomeAssistant, access_token: str) -> anthropic.AsyncCli
     return anthropic.AsyncAnthropic(
         auth_token=access_token,
         http_client=get_async_client(hass),
+        default_headers={
+            "x-app": "cli",
+        },
     )
 
 
@@ -113,9 +116,15 @@ async def async_setup_entry(
 
     client = _create_client(hass, access_token)
 
-    # Validate the token works
+    # Validate the token works with a lightweight messages call
+    # OAuth tokens can't call models.list (API-key only endpoint)
     try:
-        await client.models.list(timeout=10.0)
+        await client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=10,
+            messages=[{"role": "user", "content": "hi"}],
+            timeout=15.0,
+        )
     except anthropic.AuthenticationError as err:
         LOGGER.error("Invalid OAuth token: %s", err)
         # Try refreshing once more
@@ -124,7 +133,12 @@ async def async_setup_entry(
             return False
         client = _create_client(hass, access_token)
         try:
-            await client.models.list(timeout=10.0)
+            await client.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=10,
+                messages=[{"role": "user", "content": "hi"}],
+                timeout=15.0,
+            )
         except anthropic.AuthenticationError as err2:
             LOGGER.error("Token refresh did not resolve auth error: %s", err2)
             return False
