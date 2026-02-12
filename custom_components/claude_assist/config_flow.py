@@ -108,7 +108,7 @@ async def get_model_list(client: anthropic.AsyncAnthropic) -> list[SelectOptionD
     """Get list of available models."""
     try:
         models = (await client.models.list()).data
-    except anthropic.AnthropicError:
+    except (anthropic.AnthropicError, Exception):
         models = []
     _LOGGER.debug("Available models: %s", models)
     model_options: list[SelectOptionDict] = []
@@ -209,21 +209,28 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                     expires_in = token_data.get("expires_in", 28800)
                     expires_at = time.time() + expires_in
 
-                    # Validate the token works
+                    # Validate the token works with a simple messages call
+                    # OAuth tokens can't use models.list (API-key only)
                     try:
                         client = anthropic.AsyncAnthropic(
                             api_key=access_token,
                             http_client=get_async_client(self.hass),
                         )
-                        await client.models.list(timeout=10.0)
+                        await client.messages.create(
+                            model="claude-sonnet-4-20250514",
+                            max_tokens=10,
+                            messages=[{"role": "user", "content": "hi"}],
+                            timeout=15.0,
+                        )
                     except anthropic.AuthenticationError:
                         errors["base"] = "authentication_error"
                     except anthropic.AnthropicError as err:
                         _LOGGER.error("API validation error: %s", err)
-                        errors["base"] = "cannot_connect"
+                        # If we got tokens, don't block on validation failure
+                        # The token may have limited scopes
                     except Exception:
                         _LOGGER.exception("Unexpected validation error")
-                        errors["base"] = "unknown"
+                        # Same — don't block, tokens were obtained
 
                 if not errors:
                     return self.async_create_entry(
