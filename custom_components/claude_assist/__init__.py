@@ -61,7 +61,14 @@ async def _async_create_api_key(hass: HomeAssistant, oauth_token: str) -> str | 
             content=None,
             headers={"Authorization": f"Bearer {oauth_token}"},
         )
-        response.raise_for_status()
+        if response.status_code != 200:
+            LOGGER.error(
+                "Failed to create API key: %s %s - %s",
+                response.status_code,
+                response.reason_phrase,
+                response.text,
+            )
+            return None
         data = response.json()
         api_key = data.get("raw_key")
         if api_key:
