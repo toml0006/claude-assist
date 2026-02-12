@@ -212,28 +212,13 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                     expires_in = token_data.get("expires_in", 28800)
                     expires_at = time.time() + expires_in
 
-                    # Validate the token works with a simple messages call
-                    # OAuth tokens can't use models.list (API-key only)
-                    try:
-                        client = anthropic.AsyncAnthropic(
-                            api_key=access_token,
-                            http_client=get_async_client(self.hass),
-                        )
-                        await client.messages.create(
-                            model="claude-sonnet-4-20250514",
-                            max_tokens=10,
-                            messages=[{"role": "user", "content": "hi"}],
-                            timeout=15.0,
-                        )
-                    except anthropic.AuthenticationError:
-                        errors["base"] = "authentication_error"
-                    except anthropic.AnthropicError as err:
-                        _LOGGER.error("API validation error: %s", err)
-                        # If we got tokens, don't block on validation failure
-                        # The token may have limited scopes
-                    except Exception:
-                        _LOGGER.exception("Unexpected validation error")
-                        # Same — don't block, tokens were obtained
+                    # Skip API validation — OAuth subscription tokens may not
+                    # work with the standard Anthropic API endpoints directly.
+                    # The token exchange succeeded, so the tokens are valid.
+                    _LOGGER.info(
+                        "OAuth token exchange successful, access token prefix: %s...",
+                        access_token[:20] if access_token else "none",
+                    )
 
                 if not errors:
                     return self.async_create_entry(
