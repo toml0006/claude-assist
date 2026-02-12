@@ -14,7 +14,7 @@
     "step": {
       "user": {
         "title": "Authenticate with Anthropic",
-        "description": "Sign in with your Claude subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize the app\n3. You'll be redirected to a localhost URL — copy the `code` parameter from the URL\n4. Paste the authorization code below\n\n**Redirect URI:** `{redirect_uri}`",
+        "description": "Sign in with your Claude subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize the app\n3. After authorizing, you'll see a page with your authorization code\n4. Copy and paste the code below\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "auth_code": "Authorization code"
         }
