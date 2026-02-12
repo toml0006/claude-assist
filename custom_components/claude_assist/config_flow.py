@@ -159,6 +159,13 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # User has submitted the authorization code
             auth_code = user_input.get("auth_code", "").strip()
+            # Handle case where user pastes the full redirect URL
+            if "code=" in auth_code:
+                from urllib.parse import urlparse, parse_qs
+                parsed = urlparse(auth_code)
+                code_values = parse_qs(parsed.query).get("code", [])
+                if code_values:
+                    auth_code = code_values[0]
             if not auth_code:
                 errors["base"] = "no_auth_code"
             else:
@@ -269,8 +276,8 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
 
     def _get_redirect_uri(self) -> str:
         """Get the redirect URI for OAuth."""
-        # Use a localhost redirect so the user can copy the code from the URL
-        return "http://localhost:16423/callback"
+        # Use Anthropic's manual redirect page which displays the code for copy/paste
+        return "https://platform.claude.com/oauth/code/callback"
 
     @classmethod
     @callback
