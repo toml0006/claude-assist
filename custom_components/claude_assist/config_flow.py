@@ -541,7 +541,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         """Get list of available models."""
         entry = self._get_entry()
         client = anthropic.AsyncAnthropic(
-            api_key=entry.data[CONF_ACCESS_TOKEN],
+            auth_token=entry.data[CONF_ACCESS_TOKEN],
             http_client=get_async_client(self.hass),
         )
         return await get_model_list(client)
@@ -553,7 +553,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         if zone_home is not None:
             entry = self._get_entry()
             client = anthropic.AsyncAnthropic(
-                api_key=entry.data[CONF_ACCESS_TOKEN],
+                auth_token=entry.data[CONF_ACCESS_TOKEN],
                 http_client=get_async_client(self.hass),
             )
             location_schema = vol.Schema(

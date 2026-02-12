@@ -88,11 +88,11 @@ async def _async_refresh_token(hass: HomeAssistant, entry: ConfigEntry) -> str |
 def _create_client(hass: HomeAssistant, access_token: str) -> anthropic.AsyncClient:
     """Create an Anthropic async client using OAuth access token.
 
-    OAuth access tokens (sk-ant-oat01-...) work directly as the api_key
-    since the Anthropic SDK sends them as Bearer tokens.
+    OAuth tokens must be sent as Authorization: Bearer, not x-api-key.
+    The SDK's auth_token parameter handles this correctly.
     """
     return anthropic.AsyncAnthropic(
-        api_key=access_token,
+        auth_token=access_token,
         http_client=get_async_client(hass),
     )
 
