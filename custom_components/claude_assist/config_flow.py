@@ -113,6 +113,15 @@ async def get_model_list(client: anthropic.AsyncAnthropic) -> list[SelectOptionD
     _LOGGER.debug("Available models: %s", models)
     model_options: list[SelectOptionDict] = []
     short_form = re.compile(r"[^\d]-\d$")
+
+    def _major_version(model_id: str) -> int:
+        # Common ids: claude-3-5-sonnet-..., claude-haiku-4-5, claude-opus-4-5-20250514
+        if "-4" in model_id:
+            return 4
+        if "-3" in model_id:
+            return 3
+        return 0
+
     for model_info in models:
         # Resolve alias from versioned model name
         model_alias = (
@@ -130,12 +139,29 @@ async def get_model_list(client: anthropic.AsyncAnthropic) -> list[SelectOptionD
             model_alias += "-0"
         if model_alias.endswith(("haiku", "opus", "sonnet")):
             model_alias += "-latest"
+
+        major = _major_version(model_alias)
+        legacy = 0 < major < 4
+        label = model_info.display_name
+        if legacy:
+            label = f"Legacy · {label}"
+
         model_options.append(
             SelectOptionDict(
-                label=model_info.display_name,
+                label=label,
                 value=model_alias,
             )
         )
+
+    # Order: 4.x first, then legacy (<4)
+    model_options.sort(
+        key=lambda opt: (
+            0 if _major_version(opt["value"]) >= 4 else 1,
+            -_major_version(opt["value"]),
+            opt["label"].lower(),
+        )
+    )
+
     return model_options
 
 
@@ -571,6 +597,9 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             SelectOptionDict(label="Claude Sonnet 4.5", value="claude-sonnet-4-5-20250514"),
             SelectOptionDict(label="Claude Sonnet 4", value="claude-sonnet-4-20250514"),
             SelectOptionDict(label="Claude Opus 4.5", value="claude-opus-4-5-20250514"),
+            SelectOptionDict(label="Legacy · Claude Haiku 3.5", value="claude-3-5-haiku-20241022"),
+            SelectOptionDict(label="Legacy · Claude Haiku 3", value="claude-3-haiku-20240307"),
+            SelectOptionDict(label="Legacy · Claude Opus 3", value="claude-3-opus-20240229"),
         ]
 
     async def _get_location_data(self) -> dict[str, str]:
