@@ -341,6 +341,15 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
 
         step_schema.update(
             {
+                vol.Optional(
+                    CONF_CHAT_MODEL,
+                    default=self.options.get(CONF_CHAT_MODEL, DEFAULT[CONF_CHAT_MODEL]),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=await self._get_model_list(),
+                        custom_value=True,
+                    )
+                ),
                 vol.Optional(CONF_PROMPT): TemplateSelector(),
                 vol.Optional(
                     CONF_LLM_HASS_API,
@@ -539,11 +548,30 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
     async def _get_model_list(self) -> list[SelectOptionDict]:
         """Get list of available models."""
         entry = self._get_entry()
-        client = anthropic.AsyncAnthropic(
-            auth_token=entry.data[CONF_ACCESS_TOKEN],
-            http_client=get_async_client(self.hass),
-        )
-        return await get_model_list(client)
+        try:
+            from .const import OAUTH_BETA_FLAGS  # noqa: C0415
+
+            client = anthropic.AsyncAnthropic(
+                auth_token=entry.data[CONF_ACCESS_TOKEN],
+                http_client=get_async_client(self.hass),
+                default_headers={
+                    "anthropic-beta": OAUTH_BETA_FLAGS,
+                    "user-agent": "claude-cli/2.1.2 (external, cli)",
+                    "x-app": "cli",
+                },
+            )
+            models = await get_model_list(client)
+            if models:
+                return models
+        except Exception:
+            pass
+        # Fallback to static list if API call fails
+        return [
+            SelectOptionDict(label="Claude Haiku 4.5", value="claude-haiku-4-5"),
+            SelectOptionDict(label="Claude Sonnet 4.5", value="claude-sonnet-4-5-20250514"),
+            SelectOptionDict(label="Claude Sonnet 4", value="claude-sonnet-4-20250514"),
+            SelectOptionDict(label="Claude Opus 4.5", value="claude-opus-4-5-20250514"),
+        ]
 
     async def _get_location_data(self) -> dict[str, str]:
         """Get approximate location data of the user."""
