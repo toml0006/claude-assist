@@ -153,6 +153,12 @@ class GetHistoryTool(llm.Tool):
             else:
                 end_time = now
 
+            # Clamp future end_time (LLMs sometimes pass future dates)
+            if end_time > now:
+                end_time = now
+            if start_time > end_time:
+                start_time = end_time - timedelta(hours=24)
+
             from homeassistant.components.recorder import util as recorder_util
 
             # Use the recorder session API (more stable signature across HA versions)
@@ -166,7 +172,7 @@ class GetHistoryTool(llm.Tool):
                         entity_ids,
                         None,  # filters
                         True,  # include_start_time_state
-                        True,  # significant_changes_only
+                        False,  # significant_changes_only (False = include all changes)
                         True,  # minimal_response
                         False,  # no_attributes
                     )
@@ -232,8 +238,9 @@ class GetLogbookTool(llm.Tool):
     ) -> str:
         """Get logbook entries."""
         try:
-            from homeassistant.components.logbook import async_log_entries
             from homeassistant.util import dt as dt_util
+            from homeassistant.components.logbook.helpers import async_determine_event_types
+            from homeassistant.components.logbook.processor import EventProcessor
 
             hours_ago = tool_input.tool_args.get("hours_ago", 24)
             entity_ids = tool_input.tool_args.get("entity_ids")
@@ -246,46 +253,63 @@ class GetLogbookTool(llm.Tool):
             now = dt_util.utcnow()
             start_time = now - timedelta(hours=hours_ago)
 
-            # Use the logbook's event processing
-            from homeassistant.components.logbook.processor import EventProcessor
             from homeassistant.components.recorder import get_instance
 
-            events = await get_instance(hass).async_add_executor_job(
-                lambda: list(async_log_entries(hass, start_time, now, entity_ids))
-                if callable(getattr(async_log_entries, '__call__', None))
-                else []
+            # Use logbook processor (same path as /api/logbook)
+            event_types = async_determine_event_types(hass, entity_ids, None)
+            processor = EventProcessor(
+                hass,
+                event_types,
+                entity_ids,
+                None,
+                None,
+                timestamp=True,
+                include_entity_name=True,
             )
 
-            # Fallback: query recorder states directly if logbook API isn't available
+            events = await get_instance(hass).async_add_executor_job(
+                processor.get_events,
+                start_time,
+                now,
+            )
+
+            # If logbook has nothing (or logbook is filtered), fall back to recorder states
             if not events:
                 from homeassistant.components.recorder import history as recorder_history
+                from homeassistant.components.recorder import util as recorder_util
 
-                result = await get_instance(hass).async_add_executor_job(
-                    recorder_history.get_significant_states,
-                    hass,
-                    start_time,
-                    now,
-                    entity_ids,
-                    None,
-                    True,
-                    True,
-                    True,
-                    True,
-                )
+                def _query() -> dict[str, list[Any]]:
+                    with recorder_util.session_scope(hass=hass, read_only=True) as session:
+                        return recorder_history.get_significant_states_with_session(
+                            hass,
+                            session,
+                            start_time,
+                            now,
+                            entity_ids,
+                            None,
+                            True,
+                            False,
+                            True,
+                            True,
+                        )
 
-                entries = []
+                result = await get_instance(hass).async_add_executor_job(_query)
+
+                entries: list[dict[str, Any]] = []
                 for eid, states in result.items():
-                    for s in states[-20:]:  # Last 20 per entity
-                        entries.append({
-                            "entity_id": eid,
-                            "state": s.state,
-                            "when": s.last_changed.isoformat() if hasattr(s, 'last_changed') and s.last_changed else None,
-                        })
+                    for s in states[-50:]:
+                        entries.append(
+                            {
+                                "entity_id": eid,
+                                "state": getattr(s, "state", None),
+                                "when": s.last_changed.isoformat() if getattr(s, "last_changed", None) else None,
+                            }
+                        )
 
                 entries.sort(key=lambda x: x.get("when") or "", reverse=True)
-                return {"entries": entries[:100]}
+                return {"entries": entries[:100], "note": "logbook empty; returned recorder history"}
 
-            return {"events": events[:100]}
+            return {"events": events[:200]}
         except Exception as e:
             LOGGER.error("get_logbook error: %s", e)
             return {"error": str(e)}
