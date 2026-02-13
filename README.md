@@ -1,6 +1,6 @@
 # claude-assist
 
-**Use your Claude subscription as a Home Assistant conversation agent — no API key required.**
+Use your **Claude subscription** (Pro/Max) as a **Home Assistant Assist conversation agent** — **no Anthropic API key** required.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
 [![GitHub Release](https://img.shields.io/github/v/release/toml0006/claude-assist)](https://github.com/toml0006/claude-assist/releases)
@@ -10,148 +10,152 @@
 
 ## What is this?
 
-**claude-assist** is a Home Assistant custom integration that lets you use your existing Claude Pro/Max subscription as a conversation agent — the same way the official Anthropic integration works, but without needing a separate API key or pay-per-token billing.
+**claude-assist** is a Home Assistant custom integration that lets you use your existing Claude subscription as a conversation agent inside Home Assistant’s Assist pipeline.
 
-### Why?
+It authenticates using the **same OAuth flow as the Claude Code CLI**, so you can avoid pay-per-token API billing.
 
-- 💰 **Use what you already pay for** — Claude Pro ($20/mo) or Max ($100-200/mo) subscriptions include usage that's separate from API billing
-- 🏠 **Full Home Assistant integration** — works with HA's Assist pipeline, exposed entities, and voice assistants
-- 🗣️ **Siri / voice ready** — pair with an Apple Shortcut for "Hey Siri, ask Claude..." from anywhere
-- 🔑 **No API key needed** — authenticates via OAuth (same flow as Claude Code CLI)
+---
 
-### How it works
+## Highlights
+
+- **Subscription OAuth auth** (PKCE) — no API key required
+- **Automatic token refresh** (access tokens expire ~8 hours)
+- **Assist pipeline compatible** (works like a normal HA conversation agent)
+- **Per-agent model selection** in the UI
+- **Extended tools** (optional) beyond standard Assist capabilities:
+  - History (`get_history`)
+  - Logbook (`get_logbook`)
+  - Statistics (`get_statistics`)
+  - Template rendering (`render_template`)
+  - Automations (`list_automations`, `toggle_automation`, `add_automation`)
+  - Dashboards (experimental) (`modify_dashboard`)
+  - Notifications (`send_notification`)
+  - “Who’s home” (`who_is_home`)
+  - Shopping/todo (`manage_list`)
+  - Calendar (`get_calendar_events`)
+- **Per-agent tool allowlist**: choose exactly which *extra* tools each configured agent can use
+
+---
+
+## How it works
 
 ```
-"Hey Siri, ask Claude why my office lights are still on"
-       ↓
-  Apple Shortcut → HA Conversation API
-       ↓
-  claude-assist (OAuth → Anthropic API)
-       ↓
-  Claude (sees your HA entities, answers naturally)
-       ↓
-  Siri speaks the response
+Siri / HA Voice / UI chat
+        ↓
+HA Conversation API / Assist Pipeline
+        ↓
+claude-assist (subscription OAuth)
+        ↓
+Anthropic API (Claude)
+        ↓
+Response spoken/displayed by Home Assistant
 ```
 
-## Features
-
-- 🔐 **OAuth PKCE authentication** — secure login via your Anthropic account (same as Claude Code)
-- 🔄 **Automatic token refresh** — access tokens expire every 8 hours; handled transparently
-- 🏠 **HA Assist pipeline** — full conversation agent with entity control and state queries
-- 🧠 **Model selection** — choose Claude Sonnet, Opus, Haiku, etc.
-- ⚡ **Extended thinking** — optional deep reasoning for complex queries
-- 🌐 **Web search** — optional server-side web search for real-time info
-- 📝 **Custom instructions** — customize Claude's personality and behavior via HA templates
+---
 
 ## Installation
 
-### HACS (Recommended)
+### Option A: HACS (recommended)
 
-1. Open HACS in Home Assistant
-2. Click the three dots → **Custom repositories**
-3. Add `toml0006/claude-assist` as an **Integration**
-4. Search for "Claude Assist" and install
+1. Home Assistant → **HACS**
+2. **⋮ → Custom repositories**
+3. Add `toml0006/claude-assist` as **Integration**
+4. Install **Claude Assist**
 5. Restart Home Assistant
 
-### Manual
+### Option B: Manual
 
-1. Copy the `custom_components/claude_assist` folder to your HA `config/custom_components/` directory
+1. Copy `custom_components/claude_assist` into your HA config directory:
+   - `/config/custom_components/claude_assist`
 2. Restart Home Assistant
+
+---
 
 ## Setup
 
-1. Go to **Settings → Devices & Services → Add Integration**
-2. Search for **"Claude Assist"**
-3. Click **"Authenticate with Anthropic"** — this opens a browser window
-4. Sign in with your Claude subscription account
-5. Authorize the integration
-6. Done! Claude is now available as a conversation agent
+1. HA → **Settings → Devices & services → Add integration**
+2. Search for **Claude Assist**
+3. Follow the OAuth instructions (you’ll be sent to a Claude/Anthropic page)
+4. Paste the returned code back into HA
 
-### Configure as Voice Assistant
+After setup you’ll have a **conversation agent** sub-entry (and you can create multiple agents/sub-entries if you want different models/tool permissions).
 
-1. Go to **Settings → Voice Assistants → Add Assistant**
-2. Name it (e.g., "Claude")
-3. Set **Conversation agent** to your Claude Assist instance
-4. Optionally configure STT/TTS engines
+---
 
-### Expose Entities
+## Configure an agent (model + tools)
 
-Go to **Settings → Voice Assistants → Expose** tab to choose which entities Claude can see and control.
+For each configured conversation agent/sub-entry:
 
-## Siri Shortcut (Optional)
+- **Model**: choose which Claude model to use (4.x models are listed first; <4.x are labeled **Legacy**)
+- **Enabled tools**: select which *extra* tools this agent can call
+- **LLM API selection (important):**
+  - Select **Claude Assist — <agent name>**
+  - Do **not** also select the plain **Home Assistant** / **Assist** API in the multi-select, or tools may be namespaced and become harder for the model to call.
 
-Create an Apple Shortcut for hands-free access from anywhere:
+---
 
-1. **Create new Shortcut** named "Ask Claude"
-2. Add **"Dictate Text"** action
-3. Add **"Get Contents of URL"** action:
-   - URL: `https://your-ha-instance.com/api/conversation/process`
-   - Method: POST
-   - Headers: `Authorization: Bearer YOUR_HA_TOKEN`
-   - Body (JSON):
+## Siri Shortcut (optional)
+
+You can build a simple Shortcut:
+
+1. **Dictate Text**
+2. **Get Contents of URL**
+   - URL: `https://<your-ha>/api/conversation/process`
+   - Method: `POST`
+   - Headers:
+     - `Authorization: Bearer <HA Long-Lived Access Token>`
+     - `Content-Type: application/json`
+   - Body:
      ```json
      {
-       "text": "[Dictated Text]",
-       "agent_id": "conversation.claude_assist"
+       "text": "<dictated text>",
+       "language": "en",
+       "agent_id": "conversation.<your_claude_assist_entity_id>"
      }
      ```
-4. Add **"Get Dictionary Value"** for key `response.speech.plain.speech`
-5. Add **"Speak Text"** action
+3. Speak `response.speech.plain.speech`
 
-Now say: **"Hey Siri, Ask Claude [your question]"**
+Note: multi-turn “session” behavior depends on whether your caller reuses `conversation_id`.
 
-## Configuration Options
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| Instructions | (default prompt) | Custom instructions for Claude (supports HA templates) |
-| Control Home Assistant | `true` | Allow Claude to see/control exposed entities |
-| Model | `claude-sonnet-4-5-20250929` | Which Claude model to use |
-| Max tokens | `1024` | Maximum response length |
-| Temperature | `1.0` | Response randomness (0.0–1.0) |
-| Thinking budget | `0` | Extended thinking tokens (0 = disabled) |
-| Web search | `false` | Enable server-side web search |
-
-## How is this different from the official Anthropic integration?
-
-| Feature | Official Anthropic | claude-assist |
-|---------|-------------------|---------------|
-| Authentication | API key (pay-per-token) | OAuth (subscription) |
-| Billing | Metered API usage | Flat monthly subscription |
-| Entity control | ✅ | ✅ |
-| Assist pipeline | ✅ | ✅ |
-| Extended thinking | ✅ | ✅ |
-| Web search | ✅ | ✅ |
-
-The conversation agent functionality is identical — the only difference is how you authenticate.
-
-## Requirements
-
-- Home Assistant 2024.10.0 or newer
-- Active Claude Pro or Max subscription
-- A browser for the initial OAuth login
+---
 
 ## FAQ
 
-**Does this count against my subscription limits?**
-Yes — usage goes through your subscription's fair-use allowance, same as using claude.ai or Claude Code.
+### Does this use my subscription instead of API billing?
+Yes. It uses subscription OAuth (Claude Code-style). No API key needed.
 
-**Can I use this with Claude Pro ($20/mo)?**
-Yes! Any Claude subscription tier works.
+### Is this the same as the official Anthropic integration?
+Functionally similar on the HA side (conversation agent), but authentication differs:
 
-**Is this against Anthropic's ToS?**
-This uses the same OAuth flow as Claude Code CLI, which is an official Anthropic product. We're using the API the same way Claude Code does.
+- **Official Anthropic integration**: API key (metered)
+- **claude-assist**: subscription OAuth (flat subscription)
 
-**What happens when my token expires?**
-Tokens auto-refresh using your refresh token. You should rarely need to re-authenticate.
+### Why can’t Claude answer “when did X change” by default?
+Standard Assist tools are focused on live state + control. For history/logbook/statistics you must enable the extra tools for that agent.
+
+---
+
+## Development notes (auth details)
+
+This integration works by mimicking Claude Code’s OAuth + request headers.
+
+- Token endpoint: `https://console.anthropic.com/v1/oauth/token`
+- Requires beta/header matching (e.g. `anthropic-beta: claude-code-20250219,oauth-2025-04-20`, `x-app: cli`, `user-agent: claude-cli/...`)
+
+---
 
 ## Contributing
 
-Contributions welcome! Please open an issue first to discuss what you'd like to change.
+PRs welcome. If you’re adding new tools, please keep them:
+- opt-in per agent (tool allowlist)
+- safe by default
+- returning structured JSON objects (not pre-serialized JSON strings)
+
+---
 
 ## License
 
-[MIT](LICENSE)
+MIT — see [LICENSE](LICENSE).
 
 ---
 
