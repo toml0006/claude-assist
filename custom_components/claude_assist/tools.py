@@ -121,7 +121,7 @@ class GetHistoryTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Get entity history."""
         try:
             from homeassistant.components.recorder import get_instance, history as recorder_history
@@ -131,7 +131,7 @@ class GetHistoryTool(llm.Tool):
 
             not_exposed = _validate_exposed_entities(hass, entity_ids)
             if not_exposed:
-                return json.dumps({"error": f"Entities not exposed: {not_exposed}"})
+                return {"error": f"Entities not exposed: {not_exposed}"}
 
             now = dt_util.utcnow()
             start_time_str = tool_input.tool_args.get("start_time")
@@ -140,7 +140,7 @@ class GetHistoryTool(llm.Tool):
             if start_time_str:
                 start_time = dt_util.parse_datetime(start_time_str)
                 if start_time is None:
-                    return json.dumps({"error": f"Invalid start_time: {start_time_str}"})
+                    return {"error": f"Invalid start_time: {start_time_str}"}
                 start_time = dt_util.as_utc(start_time)
             else:
                 start_time = now - timedelta(hours=24)
@@ -148,42 +148,52 @@ class GetHistoryTool(llm.Tool):
             if end_time_str:
                 end_time = dt_util.parse_datetime(end_time_str)
                 if end_time is None:
-                    return json.dumps({"error": f"Invalid end_time: {end_time_str}"})
+                    return {"error": f"Invalid end_time: {end_time_str}"}
                 end_time = dt_util.as_utc(end_time)
             else:
                 end_time = now
 
-            result = await get_instance(hass).async_add_executor_job(
-                recorder_history.get_significant_states,
-                hass,
-                start_time,
-                end_time,
-                entity_ids,
-                None,  # filters
-                True,  # include_start_time_state
-                True,  # significant_changes_only
-                True,  # minimal_response
-                False, # no_attributes
-            )
+            from homeassistant.components.recorder import util as recorder_util
 
-            formatted = []
+            # Use the recorder session API (more stable signature across HA versions)
+            def _query() -> dict[str, list[Any]]:
+                with recorder_util.session_scope(hass=hass, read_only=True) as session:
+                    return recorder_history.get_significant_states_with_session(
+                        hass,
+                        session,
+                        start_time,
+                        end_time,
+                        entity_ids,
+                        None,  # filters
+                        True,  # include_start_time_state
+                        True,  # significant_changes_only
+                        True,  # minimal_response
+                        False,  # no_attributes
+                    )
+
+            result = await get_instance(hass).async_add_executor_job(_query)
+
+            formatted: list[dict[str, Any]] = []
             for entity_id, states in result.items():
-                formatted.append({
-                    "entity_id": entity_id,
-                    "states": [
-                        {
-                            "state": s.state,
-                            "last_changed": s.last_changed.isoformat() if hasattr(s, 'last_changed') and s.last_changed else None,
-                            "attributes": dict(s.attributes) if hasattr(s, 'attributes') and s.attributes else {},
-                        }
-                        for s in states
-                    ],
-                })
+                formatted.append(
+                    {
+                        "entity_id": entity_id,
+                        "states": [
+                            {
+                                "state": getattr(s, "state", None),
+                                "last_changed": s.last_changed.isoformat() if getattr(s, "last_changed", None) else None,
+                                "last_updated": s.last_updated.isoformat() if getattr(s, "last_updated", None) else None,
+                                "attributes": dict(getattr(s, "attributes", {}) or {}),
+                            }
+                            for s in states
+                        ],
+                    }
+                )
 
-            return json.dumps(formatted, default=str)
+            return {"start_time": start_time.isoformat(), "end_time": end_time.isoformat(), "results": formatted}
         except Exception as e:
             LOGGER.error("get_history error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class GetLogbookTool(llm.Tool):
