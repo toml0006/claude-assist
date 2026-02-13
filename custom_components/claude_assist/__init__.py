@@ -166,6 +166,12 @@ async def async_setup_entry(
         )
     )
 
+    # Register custom LLM API with our extra tools
+    from .api import async_register_claude_assist_api  # noqa: C0415
+
+    unregister_api = async_register_claude_assist_api(hass, entry)
+    entry.async_on_unload(unregister_api)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     entry.async_on_unload(entry.add_update_listener(async_update_options))

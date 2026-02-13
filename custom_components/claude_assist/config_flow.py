@@ -85,7 +85,7 @@ _LOGGER = logging.getLogger(__name__)
 
 DEFAULT_CONVERSATION_OPTIONS = {
     CONF_RECOMMENDED: True,
-    CONF_LLM_HASS_API: [llm.LLM_API_ASSIST],
+    CONF_LLM_HASS_API: ["claude_assist"],
     CONF_PROMPT: llm.DEFAULT_INSTRUCTIONS_PROMPT,
 }
 
