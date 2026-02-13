@@ -42,11 +42,30 @@ class ClaudeAssistSubentryAPI(llm.API):
             if isinstance(enabled, str):
                 enabled = [enabled]
 
-        tools = list(assist.tools) + get_custom_tools(self.hass, self._entry, enabled=enabled)
+        custom_tools = get_custom_tools(self.hass, self._entry, enabled=enabled)
+        tools = list(assist.tools) + custom_tools
+
+        # Extend Assist prompt so the model knows these tools exist.
+        tool_names = {t.name for t in custom_tools}
+        extra_lines: list[str] = []
+        if "get_history" in tool_names:
+            extra_lines.append(
+                "- Use `get_history` to answer questions about *when* something turned on/off or how long it has been in a state."
+            )
+        if "get_logbook" in tool_names:
+            extra_lines.append("- Use `get_logbook` to answer questions about recent events.")
+        if "get_statistics" in tool_names:
+            extra_lines.append("- Use `get_statistics` for aggregated sensor/energy data over time.")
+        if "render_template" in tool_names:
+            extra_lines.append("- Use `render_template` to compute answers with Jinja templates.")
+        if extra_lines:
+            api_prompt = assist.api_prompt + "\n\nYou ALSO have access to these extra tools:\n" + "\n".join(extra_lines) + "\n"
+        else:
+            api_prompt = assist.api_prompt
 
         return llm.APIInstance(
             api=self,
-            api_prompt=assist.api_prompt,
+            api_prompt=api_prompt,
             llm_context=llm_context,
             tools=tools,
             custom_serializer=assist.custom_serializer,
