@@ -235,7 +235,7 @@ class GetLogbookTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Get logbook entries."""
         try:
             from homeassistant.util import dt as dt_util
@@ -345,7 +345,7 @@ class RenderTemplateTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Render a template."""
         try:
             from homeassistant.helpers.template import Template
@@ -401,7 +401,7 @@ class GetStatisticsTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Get statistics."""
         try:
             from homeassistant.components.recorder import get_instance
@@ -470,7 +470,7 @@ class ListAutomationsTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """List automations."""
         try:
             automations = []
@@ -520,7 +520,7 @@ class ToggleAutomationTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Toggle automation."""
         try:
             entity_id = tool_input.tool_args["entity_id"]
@@ -578,7 +578,7 @@ class AddAutomationTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Add automation."""
         try:
             import os
@@ -668,7 +668,7 @@ class ModifyDashboardTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Modify dashboard."""
         try:
             import os
@@ -791,7 +791,7 @@ class SendNotificationTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Send notification."""
         try:
             args = tool_input.tool_args
@@ -846,7 +846,7 @@ class GetErrorLogTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Get error log."""
         try:
             import os
@@ -889,7 +889,7 @@ class WhoIsHomeTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Check who is home."""
         try:
             people = []
@@ -953,7 +953,7 @@ class ManageListTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Manage list."""
         try:
             args = tool_input.tool_args
@@ -1069,7 +1069,7 @@ class GetCalendarEventsTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Get calendar events."""
         try:
             from homeassistant.util import dt as dt_util
