@@ -620,25 +620,28 @@ class AddAutomationTool(llm.Tool):
 
 
 class ModifyDashboardTool(llm.Tool):
-    """Tool to read/modify Lovelace dashboard config."""
+    """Tool to read/modify Lovelace dashboard config via official APIs."""
 
     name = "modify_dashboard"
     description = (
         "Read or modify a Lovelace dashboard configuration. "
-        "Actions: 'get' to read current config, 'add_card' to add a card to a view, "
-        "'remove_card' to remove a card, 'add_view' to add a new view."
+        "Actions: 'list' to list all dashboards, 'get' to read current config, "
+        "'add_card' to add a card to a view, "
+        "'remove_card' to remove a card, 'add_view' to add a new view. "
+        "Only storage-mode dashboards can be modified; YAML-mode dashboards are read-only."
     )
 
     parameters = vol.Schema(
         {
             vol.Required(
                 "action",
-                description="Action: get, add_card, remove_card, add_view",
-            ): vol.In(["get", "add_card", "remove_card", "add_view"]),
+                description="Action: list, get, add_card, remove_card, add_view",
+            ): vol.In(["list", "get", "add_card", "remove_card", "add_view"]),
             vol.Optional(
-                "dashboard",
-                description="Dashboard filename (default: lovelace). Use 'lovelace.dashboard_name' for custom dashboards.",
-            ): str,
+                "url_path",
+                description="Dashboard url_path (default: None for the default dashboard). "
+                "Use the url_path from 'list' action results.",
+            ): vol.Any(str, None),
             vol.Optional(
                 "view_index",
                 description="View index (0-based) for card operations",
@@ -663,6 +666,25 @@ class ModifyDashboardTool(llm.Tool):
         self._hass = hass
         self._entry = entry
 
+    def _get_lovelace_data(self, hass: HomeAssistant) -> Any:
+        """Get the LovelaceData object from hass.data."""
+        try:
+            from homeassistant.components.lovelace.const import LOVELACE_DATA
+            return hass.data.get(LOVELACE_DATA)
+        except (ImportError, KeyError):
+            return None
+
+    def _get_dashboard(self, hass: HomeAssistant, url_path: str | None) -> Any:
+        """Look up a dashboard config object."""
+        ll_data = self._get_lovelace_data(hass)
+        if ll_data is None:
+            return None
+        dashboards = ll_data.dashboards
+        # For default dashboard, try 'lovelace' key then None key
+        if url_path is None:
+            return dashboards.get("lovelace") or dashboards.get(None)
+        return dashboards.get(url_path)
+
     async def async_call(
         self,
         hass: HomeAssistant,
@@ -671,52 +693,72 @@ class ModifyDashboardTool(llm.Tool):
     ) -> dict:
         """Modify dashboard."""
         try:
-            import os
+            from homeassistant.components.lovelace.const import (
+                MODE_STORAGE,
+                MODE_YAML,
+                ConfigNotFound,
+            )
 
             args = tool_input.tool_args
             action = args["action"]
-            dashboard = args.get("dashboard", "lovelace")
+            url_path = args.get("url_path")
 
-            storage_path = os.path.join(
-                hass.config.config_dir, ".storage", dashboard
-            )
+            if action == "list":
+                ll_data = self._get_lovelace_data(hass)
+                if ll_data is None:
+                    return {"error": "Lovelace integration not loaded"}
+                result = []
+                for key, dash in ll_data.dashboards.items():
+                    info: dict[str, Any] = {
+                        "url_path": key,
+                        "mode": dash.mode,
+                    }
+                    if dash.config:
+                        info["title"] = dash.config.get("title", "")
+                        info["icon"] = dash.config.get("icon", "")
+                    result.append(info)
+                return {"dashboards": result}
 
-            def _read_config() -> dict | None:
-                if not os.path.exists(storage_path):
-                    return None
-                with open(storage_path, "r") as f:
-                    return json.load(f)
-
-            def _write_config(data: dict) -> None:
-                with open(storage_path, "w") as f:
-                    json.dump(data, f, indent=2)
-
-            config = await hass.async_add_executor_job(_read_config)
-            if config is None:
-                return {"error": f"Dashboard '{dashboard}' not found at {storage_path}"}
-
-            lovelace_data = config.get("data", {}).get("config", config.get("data", {}))
+            dashboard = self._get_dashboard(hass, url_path)
+            if dashboard is None:
+                return {"error": f"Dashboard '{url_path}' not found"}
 
             if action == "get":
-                return {"result": lovelace_data}
+                try:
+                    config = await dashboard.async_load(False)
+                except ConfigNotFound:
+                    return {"result": None, "note": "No config found (auto-generated dashboard)"}
+                return {"result": config, "mode": dashboard.mode}
 
-            elif action == "add_card":
+            # Write operations require storage mode
+            if dashboard.mode != MODE_STORAGE:
+                return {
+                    "error": f"Dashboard '{url_path}' is in {dashboard.mode} mode and cannot be modified. "
+                    "Only storage-mode dashboards support edits."
+                }
+
+            try:
+                config = await dashboard.async_load(False)
+            except ConfigNotFound:
+                config = {"views": []}
+
+            if action == "add_card":
                 view_index = args.get("view_index", 0)
                 card_config_str = args.get("card_config")
                 if not card_config_str:
                     return {"error": "card_config is required"}
 
                 card = json.loads(card_config_str)
-                views = lovelace_data.get("views", [])
+                views = config.get("views", [])
                 if view_index >= len(views):
-                    return {"error": f"View index {view_index} out of range"}
+                    return {"error": f"View index {view_index} out of range (have {len(views)} views)"}
 
                 if "cards" not in views[view_index]:
                     views[view_index]["cards"] = []
                 views[view_index]["cards"].append(card)
 
-                await hass.async_add_executor_job(_write_config, config)
-                return {"success": True, "action": "card_added"}
+                await dashboard.async_save(config)
+                return {"success": True, "action": "card_added", "view_index": view_index}
 
             elif action == "remove_card":
                 view_index = args.get("view_index", 0)
@@ -724,16 +766,16 @@ class ModifyDashboardTool(llm.Tool):
                 if card_index is None:
                     return {"error": "card_index is required"}
 
-                views = lovelace_data.get("views", [])
+                views = config.get("views", [])
                 if view_index >= len(views):
-                    return {"error": f"View index {view_index} out of range"}
+                    return {"error": f"View index {view_index} out of range (have {len(views)} views)"}
 
                 cards = views[view_index].get("cards", [])
                 if card_index >= len(cards):
-                    return {"error": f"Card index {card_index} out of range"}
+                    return {"error": f"Card index {card_index} out of range (have {len(cards)} cards)"}
 
                 removed = cards.pop(card_index)
-                await hass.async_add_executor_job(_write_config, config)
+                await dashboard.async_save(config)
                 return {"success": True, "removed_card": removed}
 
             elif action == "add_view":
@@ -742,12 +784,12 @@ class ModifyDashboardTool(llm.Tool):
                     return {"error": "view_config is required"}
 
                 view = json.loads(view_config_str)
-                if "views" not in lovelace_data:
-                    lovelace_data["views"] = []
-                lovelace_data["views"].append(view)
+                if "views" not in config:
+                    config["views"] = []
+                config["views"].append(view)
 
-                await hass.async_add_executor_job(_write_config, config)
-                return {"success": True, "action": "view_added"}
+                await dashboard.async_save(config)
+                return {"success": True, "action": "view_added", "view_count": len(config["views"])}
 
             return {"error": f"Unknown action: {action}"}
         except Exception as e:
@@ -806,13 +848,23 @@ class SendNotificationTool(llm.Tool):
             else:
                 domain, service = "notify", "notify"
 
+            # Validate the service exists
+            if not hass.services.has_service(domain, service):
+                available = [
+                    f"notify.{s}" for s in hass.services.async_services().get("notify", {})
+                ]
+                return {
+                    "error": f"Service '{domain}.{service}' not found",
+                    "available_notify_services": available,
+                }
+
             service_data: dict[str, Any] = {"message": message}
             if title:
                 service_data["title"] = title
 
             await hass.services.async_call(domain, service, service_data, blocking=True)
 
-            return {"success": True, "target": target}
+            return {"success": True, "target": target, "message": message}
         except Exception as e:
             LOGGER.error("send_notification error: %s", e)
             return {"error": str(e)}
@@ -849,18 +901,18 @@ class GetErrorLogTool(llm.Tool):
     ) -> dict:
         """Get error log."""
         try:
-            import os
-
             lines = tool_input.tool_args.get("lines", 50)
-            log_path = os.path.join(hass.config.config_dir, "home-assistant.log")
+            # Use hass.config.path() for safe, canonical log path
+            log_path = hass.config.path("home-assistant.log")
 
-            def _read_log() -> str:
+            def _read_log() -> dict:
+                import os
                 if not os.path.exists(log_path):
-                    return {"error": "Log file not found"}
-                with open(log_path, "r") as f:
+                    return {"error": "Log file not found", "path": log_path}
+                with open(log_path, "r", errors="replace") as f:
                     all_lines = f.readlines()
                     tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
-                    return {"log": "".join(tail)}
+                    return {"log": "".join(tail), "total_lines": len(all_lines), "returned_lines": len(tail)}
 
             return await hass.async_add_executor_job(_read_log)
         except Exception as e:
@@ -922,8 +974,9 @@ class ManageListTool(llm.Tool):
 
     name = "manage_list"
     description = (
-        "Add, remove, or get items from shopping lists or todo lists. "
-        "Supports shopping_list integration and todo domain entities."
+        "Add, complete, or get items from todo lists (including shopping lists). "
+        "Uses the todo domain services. If no entity_id is provided, "
+        "auto-detects the shopping list entity."
     )
 
     parameters = vol.Schema(
@@ -961,75 +1014,57 @@ class ManageListTool(llm.Tool):
             item = args.get("item")
             entity_id = args.get("entity_id")
 
-            if entity_id and entity_id.startswith("todo."):
-                # Use todo domain
-                if action == "add":
-                    if not item:
-                        return {"error": "item is required for add"}
-                    await hass.services.async_call(
-                        "todo", "add_item",
-                        {"entity_id": entity_id, "item": item},
-                        blocking=True,
-                    )
-                    return {"success": True, "action": "added", "item": item}
+            # Resolve entity_id: if none provided, try to find todo.shopping_list
+            if not entity_id:
+                # Look for the shopping_list todo entity
+                shopping_entity = hass.states.get("todo.shopping_list")
+                if shopping_entity:
+                    entity_id = "todo.shopping_list"
+                else:
+                    # Fall back: find any todo entity with "shopping" in name
+                    for state in hass.states.async_all("todo"):
+                        if "shopping" in state.entity_id.lower():
+                            entity_id = state.entity_id
+                            break
 
-                elif action == "complete":
-                    if not item:
-                        return {"error": "item is required for complete"}
-                    await hass.services.async_call(
-                        "todo", "update_item",
-                        {"entity_id": entity_id, "item": item, "status": "completed"},
-                        blocking=True,
-                    )
-                    return {"success": True, "action": "completed", "item": item}
+            if not entity_id:
+                return {"error": "No todo/shopping list entity found. Provide entity_id."}
 
-                elif action == "get_items":
-                    # Get todo items via the state attributes or service
-                    await hass.services.async_call(
-                        "todo", "get_items",
-                        {"entity_id": entity_id, "status": ["needs_action", "completed"]},
-                        blocking=True,
-                        return_response=True,
-                    )
-                    state = hass.states.get(entity_id)
-                    return {
-                        "entity_id": entity_id,
-                        "state": state.state if state else "unknown",
-                        "items": state.attributes.get("items", []) if state else [],
-                    }
+            # Validate entity exists
+            if not hass.states.get(entity_id):
+                return {"error": f"Entity {entity_id} not found"}
 
-            else:
-                # Use shopping_list
-                if action == "add":
-                    if not item:
-                        return {"error": "item is required for add"}
-                    await hass.services.async_call(
-                        "shopping_list", "add_item",
-                        {"name": item},
-                        blocking=True,
-                    )
-                    return {"success": True, "action": "added", "item": item}
+            if action == "add":
+                if not item:
+                    return {"error": "item is required for add"}
+                await hass.services.async_call(
+                    "todo", "add_item",
+                    {"entity_id": entity_id, "item": item},
+                    blocking=True,
+                )
+                return {"success": True, "action": "added", "item": item, "entity_id": entity_id}
 
-                elif action == "complete":
-                    if not item:
-                        return {"error": "item is required for complete"}
-                    await hass.services.async_call(
-                        "shopping_list", "complete_item",
-                        {"name": item},
-                        blocking=True,
-                    )
-                    return {"success": True, "action": "completed", "item": item}
+            elif action == "complete":
+                if not item:
+                    return {"error": "item is required for complete"}
+                await hass.services.async_call(
+                    "todo", "update_item",
+                    {"entity_id": entity_id, "item": item, "status": "completed"},
+                    blocking=True,
+                )
+                return {"success": True, "action": "completed", "item": item, "entity_id": entity_id}
 
-                elif action == "get_items":
-                    # Try to get items via the shopping_list component
-                    try:
-                        shopping_list = hass.data.get("shopping_list")
-                        if shopping_list:
-                            items = shopping_list.items
-                            return {"items": items}
-                    except Exception:
-                        pass
-                    return {"items": [], "note": "Shopping list not available or empty"}
+            elif action == "get_items":
+                result = await hass.services.async_call(
+                    "todo", "get_items",
+                    {"entity_id": entity_id, "status": ["needs_action", "completed"]},
+                    blocking=True,
+                    return_response=True,
+                )
+                # return_response gives {entity_id: {"items": [...]}}
+                if result and entity_id in result:
+                    return {"entity_id": entity_id, "items": result[entity_id].get("items", [])}
+                return {"entity_id": entity_id, "items": []}
 
             return {"error": f"Unknown action: {action}"}
         except Exception as e:
@@ -1076,7 +1111,14 @@ class GetCalendarEventsTool(llm.Tool):
 
             args = tool_input.tool_args
             entity_id = args["entity_id"]
-            hours_ahead = args.get("hours_ahead", 24)
+            hours_ahead = min(args.get("hours_ahead", 24), 720)  # Clamp to 30 days max
+
+            if not entity_id.startswith("calendar."):
+                return {"error": "entity_id must be a calendar entity"}
+
+            state = hass.states.get(entity_id)
+            if state is None:
+                return {"error": f"Calendar entity {entity_id} not found"}
 
             if not _should_expose(hass, entity_id):
                 return {"error": f"Entity {entity_id} is not exposed"}
@@ -1096,9 +1138,10 @@ class GetCalendarEventsTool(llm.Tool):
             )
 
             if result and entity_id in result:
-                return {"result": result[entity_id]}
+                events = result[entity_id].get("events", [])
+                return {"entity_id": entity_id, "events": events}
 
-            return {"events": [], "note": "No events found or calendar not available"}
+            return {"entity_id": entity_id, "events": []}
         except Exception as e:
             LOGGER.error("get_calendar_events error: %s", e)
             return {"error": str(e)}
