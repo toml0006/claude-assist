@@ -47,7 +47,7 @@ class SetModelTool(llm.Tool):
         hass: HomeAssistant,
         tool_input: llm.ToolInput,
         llm_context: llm.LLMContext,
-    ) -> str:
+    ) -> dict:
         """Change the model."""
         model = tool_input.tool_args["model"]
 
@@ -60,13 +60,13 @@ class SetModelTool(llm.Tool):
                 self._entry, subentry, data=new_data
             )
             LOGGER.info("Model changed to %s via tool call", model)
-            return json.dumps({
+            return {
                 "success": True,
                 "model": model,
                 "note": "Model changed. The next message will use the new model.",
-            })
+            }
 
-        return json.dumps({"success": False, "error": "No conversation subentry found"})
+        return {"success": False, "error": "No conversation subentry found"}
 
 
 def _should_expose(hass: HomeAssistant, entity_id: str) -> bool:
@@ -241,7 +241,7 @@ class GetLogbookTool(llm.Tool):
             if entity_ids:
                 not_exposed = _validate_exposed_entities(hass, entity_ids)
                 if not_exposed:
-                    return json.dumps({"error": f"Entities not exposed: {not_exposed}"})
+                    return {"error": f"Entities not exposed: {not_exposed}"}
 
             now = dt_util.utcnow()
             start_time = now - timedelta(hours=hours_ago)
@@ -283,12 +283,12 @@ class GetLogbookTool(llm.Tool):
                         })
 
                 entries.sort(key=lambda x: x.get("when") or "", reverse=True)
-                return json.dumps(entries[:100], default=str)
+                return {"entries": entries[:100]}
 
-            return json.dumps(events[:100], default=str)
+            return {"events": events[:100]}
         except Exception as e:
             LOGGER.error("get_logbook error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class RenderTemplateTool(llm.Tool):
@@ -330,10 +330,10 @@ class RenderTemplateTool(llm.Tool):
             tpl = Template(template_str, hass)
             tpl.hass = hass
             result = tpl.async_render(parse_result=False)
-            return json.dumps({"result": str(result)})
+            return {"result": str(result)}
         except Exception as e:
             LOGGER.error("render_template error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class GetStatisticsTool(llm.Tool):
@@ -395,7 +395,7 @@ class GetStatisticsTool(llm.Tool):
             if start_time_str:
                 start_time = dt_util.parse_datetime(start_time_str)
                 if start_time is None:
-                    return json.dumps({"error": f"Invalid start_time: {start_time_str}"})
+                    return {"error": f"Invalid start_time: {start_time_str}"}
                 start_time = dt_util.as_utc(start_time)
             else:
                 start_time = now - timedelta(hours=24)
@@ -403,7 +403,7 @@ class GetStatisticsTool(llm.Tool):
             if end_time_str:
                 end_time = dt_util.parse_datetime(end_time_str)
                 if end_time is None:
-                    return json.dumps({"error": f"Invalid end_time: {end_time_str}"})
+                    return {"error": f"Invalid end_time: {end_time_str}"}
                 end_time = dt_util.as_utc(end_time)
             else:
                 end_time = now
@@ -419,10 +419,10 @@ class GetStatisticsTool(llm.Tool):
                 {"change", "last_reset", "max", "mean", "min", "state", "sum"},
             )
 
-            return json.dumps(result, default=str)
+            return {"result": result}
         except Exception as e:
             LOGGER.error("get_statistics error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class ListAutomationsTool(llm.Tool):
@@ -458,10 +458,10 @@ class ListAutomationsTool(llm.Tool):
                     "last_triggered": state.attributes.get("last_triggered"),
                     "id": state.attributes.get("id"),
                 })
-            return json.dumps(automations, default=str)
+            return {"automations": automations}
         except Exception as e:
             LOGGER.error("list_automations error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class ToggleAutomationTool(llm.Tool):
@@ -503,26 +503,26 @@ class ToggleAutomationTool(llm.Tool):
             action = tool_input.tool_args.get("action", "toggle")
 
             if not entity_id.startswith("automation."):
-                return json.dumps({"error": "entity_id must be an automation entity"})
+                return {"error": "entity_id must be an automation entity"}
 
             state = hass.states.get(entity_id)
             if state is None:
-                return json.dumps({"error": f"Automation {entity_id} not found"})
+                return {"error": f"Automation {entity_id} not found"}
 
             await hass.services.async_call(
                 "automation", action, {"entity_id": entity_id}, blocking=True
             )
 
             new_state = hass.states.get(entity_id)
-            return json.dumps({
+            return {
                 "success": True,
                 "entity_id": entity_id,
                 "previous_state": state.state,
                 "new_state": new_state.state if new_state else "unknown",
-            })
+            }
         except Exception as e:
             LOGGER.error("toggle_automation error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class AddAutomationTool(llm.Tool):
@@ -569,7 +569,7 @@ class AddAutomationTool(llm.Tool):
             elif isinstance(parsed, dict):
                 config = parsed
             else:
-                return json.dumps({"error": "Invalid automation config format"})
+                return {"error": "Invalid automation config format"}
 
             if "id" not in config:
                 config["id"] = str(round(time.time() * 1000))
@@ -585,14 +585,14 @@ class AddAutomationTool(llm.Tool):
 
             await hass.services.async_call("automation", "reload", blocking=True)
 
-            return json.dumps({
+            return {
                 "success": True,
                 "automation_id": config["id"],
                 "alias": config.get("alias", "unnamed"),
-            })
+            }
         except Exception as e:
             LOGGER.error("add_automation error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class ModifyDashboardTool(llm.Tool):
@@ -669,53 +669,53 @@ class ModifyDashboardTool(llm.Tool):
 
             config = await hass.async_add_executor_job(_read_config)
             if config is None:
-                return json.dumps({"error": f"Dashboard '{dashboard}' not found at {storage_path}"})
+                return {"error": f"Dashboard '{dashboard}' not found at {storage_path}"}
 
             lovelace_data = config.get("data", {}).get("config", config.get("data", {}))
 
             if action == "get":
-                return json.dumps(lovelace_data, default=str)
+                return {"result": lovelace_data}
 
             elif action == "add_card":
                 view_index = args.get("view_index", 0)
                 card_config_str = args.get("card_config")
                 if not card_config_str:
-                    return json.dumps({"error": "card_config is required"})
+                    return {"error": "card_config is required"}
 
                 card = json.loads(card_config_str)
                 views = lovelace_data.get("views", [])
                 if view_index >= len(views):
-                    return json.dumps({"error": f"View index {view_index} out of range"})
+                    return {"error": f"View index {view_index} out of range"}
 
                 if "cards" not in views[view_index]:
                     views[view_index]["cards"] = []
                 views[view_index]["cards"].append(card)
 
                 await hass.async_add_executor_job(_write_config, config)
-                return json.dumps({"success": True, "action": "card_added"})
+                return {"success": True, "action": "card_added"}
 
             elif action == "remove_card":
                 view_index = args.get("view_index", 0)
                 card_index = args.get("card_index")
                 if card_index is None:
-                    return json.dumps({"error": "card_index is required"})
+                    return {"error": "card_index is required"}
 
                 views = lovelace_data.get("views", [])
                 if view_index >= len(views):
-                    return json.dumps({"error": f"View index {view_index} out of range"})
+                    return {"error": f"View index {view_index} out of range"}
 
                 cards = views[view_index].get("cards", [])
                 if card_index >= len(cards):
-                    return json.dumps({"error": f"Card index {card_index} out of range"})
+                    return {"error": f"Card index {card_index} out of range"}
 
                 removed = cards.pop(card_index)
                 await hass.async_add_executor_job(_write_config, config)
-                return json.dumps({"success": True, "removed_card": removed}, default=str)
+                return {"success": True, "removed_card": removed}
 
             elif action == "add_view":
                 view_config_str = args.get("view_config")
                 if not view_config_str:
-                    return json.dumps({"error": "view_config is required"})
+                    return {"error": "view_config is required"}
 
                 view = json.loads(view_config_str)
                 if "views" not in lovelace_data:
@@ -723,12 +723,12 @@ class ModifyDashboardTool(llm.Tool):
                 lovelace_data["views"].append(view)
 
                 await hass.async_add_executor_job(_write_config, config)
-                return json.dumps({"success": True, "action": "view_added"})
+                return {"success": True, "action": "view_added"}
 
-            return json.dumps({"error": f"Unknown action: {action}"})
+            return {"error": f"Unknown action: {action}"}
         except Exception as e:
             LOGGER.error("modify_dashboard error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class SendNotificationTool(llm.Tool):
@@ -788,10 +788,10 @@ class SendNotificationTool(llm.Tool):
 
             await hass.services.async_call(domain, service, service_data, blocking=True)
 
-            return json.dumps({"success": True, "target": target})
+            return {"success": True, "target": target}
         except Exception as e:
             LOGGER.error("send_notification error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class GetErrorLogTool(llm.Tool):
@@ -832,16 +832,16 @@ class GetErrorLogTool(llm.Tool):
 
             def _read_log() -> str:
                 if not os.path.exists(log_path):
-                    return json.dumps({"error": "Log file not found"})
+                    return {"error": "Log file not found"}
                 with open(log_path, "r") as f:
                     all_lines = f.readlines()
                     tail = all_lines[-lines:] if len(all_lines) > lines else all_lines
-                    return json.dumps({"log": "".join(tail)})
+                    return {"log": "".join(tail)}
 
             return await hass.async_add_executor_job(_read_log)
         except Exception as e:
             LOGGER.error("get_error_log error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class WhoIsHomeTool(llm.Tool):
@@ -887,10 +887,10 @@ class WhoIsHomeTool(llm.Tool):
                         "state": state.state,
                     })
 
-            return json.dumps({"persons": people, "device_trackers": trackers}, default=str)
+            return {"persons": people, "device_trackers": trackers}
         except Exception as e:
             LOGGER.error("who_is_home error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class ManageListTool(llm.Tool):
@@ -941,23 +941,23 @@ class ManageListTool(llm.Tool):
                 # Use todo domain
                 if action == "add":
                     if not item:
-                        return json.dumps({"error": "item is required for add"})
+                        return {"error": "item is required for add"}
                     await hass.services.async_call(
                         "todo", "add_item",
                         {"entity_id": entity_id, "item": item},
                         blocking=True,
                     )
-                    return json.dumps({"success": True, "action": "added", "item": item})
+                    return {"success": True, "action": "added", "item": item}
 
                 elif action == "complete":
                     if not item:
-                        return json.dumps({"error": "item is required for complete"})
+                        return {"error": "item is required for complete"}
                     await hass.services.async_call(
                         "todo", "update_item",
                         {"entity_id": entity_id, "item": item, "status": "completed"},
                         blocking=True,
                     )
-                    return json.dumps({"success": True, "action": "completed", "item": item})
+                    return {"success": True, "action": "completed", "item": item}
 
                 elif action == "get_items":
                     # Get todo items via the state attributes or service
@@ -968,33 +968,33 @@ class ManageListTool(llm.Tool):
                         return_response=True,
                     )
                     state = hass.states.get(entity_id)
-                    return json.dumps({
+                    return {
                         "entity_id": entity_id,
                         "state": state.state if state else "unknown",
                         "items": state.attributes.get("items", []) if state else [],
-                    }, default=str)
+                    }
 
             else:
                 # Use shopping_list
                 if action == "add":
                     if not item:
-                        return json.dumps({"error": "item is required for add"})
+                        return {"error": "item is required for add"}
                     await hass.services.async_call(
                         "shopping_list", "add_item",
                         {"name": item},
                         blocking=True,
                     )
-                    return json.dumps({"success": True, "action": "added", "item": item})
+                    return {"success": True, "action": "added", "item": item}
 
                 elif action == "complete":
                     if not item:
-                        return json.dumps({"error": "item is required for complete"})
+                        return {"error": "item is required for complete"}
                     await hass.services.async_call(
                         "shopping_list", "complete_item",
                         {"name": item},
                         blocking=True,
                     )
-                    return json.dumps({"success": True, "action": "completed", "item": item})
+                    return {"success": True, "action": "completed", "item": item}
 
                 elif action == "get_items":
                     # Try to get items via the shopping_list component
@@ -1002,15 +1002,15 @@ class ManageListTool(llm.Tool):
                         shopping_list = hass.data.get("shopping_list")
                         if shopping_list:
                             items = shopping_list.items
-                            return json.dumps({"items": items}, default=str)
+                            return {"items": items}
                     except Exception:
                         pass
-                    return json.dumps({"items": [], "note": "Shopping list not available or empty"})
+                    return {"items": [], "note": "Shopping list not available or empty"}
 
-            return json.dumps({"error": f"Unknown action: {action}"})
+            return {"error": f"Unknown action: {action}"}
         except Exception as e:
             LOGGER.error("manage_list error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 class GetCalendarEventsTool(llm.Tool):
@@ -1055,7 +1055,7 @@ class GetCalendarEventsTool(llm.Tool):
             hours_ahead = args.get("hours_ahead", 24)
 
             if not _should_expose(hass, entity_id):
-                return json.dumps({"error": f"Entity {entity_id} is not exposed"})
+                return {"error": f"Entity {entity_id} is not exposed"}
 
             now = dt_util.now()
             end = now + timedelta(hours=hours_ahead)
@@ -1072,12 +1072,12 @@ class GetCalendarEventsTool(llm.Tool):
             )
 
             if result and entity_id in result:
-                return json.dumps(result[entity_id], default=str)
+                return {"result": result[entity_id]}
 
-            return json.dumps({"events": [], "note": "No events found or calendar not available"})
+            return {"events": [], "note": "No events found or calendar not available"}
         except Exception as e:
             LOGGER.error("get_calendar_events error: %s", e)
-            return json.dumps({"error": str(e)})
+            return {"error": str(e)}
 
 
 CUSTOM_TOOL_FACTORIES: dict[str, tuple[str, type[llm.Tool]]] = {
