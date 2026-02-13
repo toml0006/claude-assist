@@ -165,16 +165,16 @@ class GetHistoryTool(llm.Tool):
             def _query() -> dict[str, list[Any]]:
                 with recorder_util.session_scope(hass=hass, read_only=True) as session:
                     return recorder_history.get_significant_states_with_session(
-                        hass,
-                        session,
-                        start_time,
-                        end_time,
-                        entity_ids,
-                        None,  # filters
-                        True,  # include_start_time_state
-                        False,  # significant_changes_only (False = include all changes)
-                        True,  # minimal_response
-                        False,  # no_attributes
+                        hass=hass,
+                        session=session,
+                        start_time=start_time,
+                        end_time=end_time,
+                        entity_ids=entity_ids,
+                        filters=None,
+                        include_start_time_state=True,
+                        significant_changes_only=False,
+                        minimal_response=True,
+                        no_attributes=False,
                     )
 
             result = await get_instance(hass).async_add_executor_job(_query)
@@ -281,16 +281,16 @@ class GetLogbookTool(llm.Tool):
                 def _query() -> dict[str, list[Any]]:
                     with recorder_util.session_scope(hass=hass, read_only=True) as session:
                         return recorder_history.get_significant_states_with_session(
-                            hass,
-                            session,
-                            start_time,
-                            now,
-                            entity_ids,
-                            None,
-                            True,
-                            False,
-                            True,
-                            True,
+                            hass=hass,
+                            session=session,
+                            start_time=start_time,
+                            end_time=now,
+                            entity_ids=entity_ids,
+                            filters=None,
+                            include_start_time_state=True,
+                            significant_changes_only=False,
+                            minimal_response=True,
+                            no_attributes=True,
                         )
 
                 result = await get_instance(hass).async_add_executor_job(_query)
