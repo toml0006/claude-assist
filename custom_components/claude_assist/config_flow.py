@@ -51,6 +51,7 @@ from homeassistant.helpers.typing import VolDictType
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CHAT_MODEL,
+    CONF_ENABLED_TOOLS,
     CONF_EXPIRES_AT,
     CONF_MAX_TOKENS,
     CONF_PROMPT,
@@ -79,6 +80,8 @@ from .const import (
     OAUTH_TOKEN_URL,
     WEB_SEARCH_UNSUPPORTED_MODELS,
 )
+
+from .tools import get_custom_tool_options  # noqa: C0415
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -365,6 +368,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
             default_name = DEFAULT_CONVERSATION_NAME
             step_schema[vol.Required(CONF_NAME, default=default_name)] = str
 
+        tool_options = get_custom_tool_options()
         step_schema.update(
             {
                 vol.Optional(
@@ -374,6 +378,21 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
                     SelectSelectorConfig(
                         options=await self._get_model_list(),
                         custom_value=True,
+                    )
+                ),
+                vol.Optional(
+                    CONF_ENABLED_TOOLS,
+                    default=self.options.get(
+                        CONF_ENABLED_TOOLS, [opt["value"] for opt in tool_options]
+                    ),
+                ): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            SelectOptionDict(label=o["label"], value=o["value"])
+                            for o in tool_options
+                        ],
+                        multiple=True,
+                        mode=SelectSelectorMode.DROPDOWN,
                     )
                 ),
                 vol.Optional(CONF_PROMPT): TemplateSelector(),

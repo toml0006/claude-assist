@@ -1070,23 +1070,45 @@ class GetCalendarEventsTool(llm.Tool):
             return json.dumps({"error": str(e)})
 
 
-def get_custom_tools(
-    hass: HomeAssistant, entry: ConfigEntry
-) -> list[llm.Tool]:
-    """Get all custom tools for the integration."""
+CUSTOM_TOOL_FACTORIES: dict[str, tuple[str, type[llm.Tool]]] = {
+    # tool_name: (label, class)
+    "set_model": ("Set model", SetModelTool),
+    "get_history": ("Get history (recorder)", GetHistoryTool),
+    "get_logbook": ("Get logbook", GetLogbookTool),
+    "render_template": ("Render template", RenderTemplateTool),
+    "get_statistics": ("Get statistics (recorder)", GetStatisticsTool),
+    "list_automations": ("List automations", ListAutomationsTool),
+    "toggle_automation": ("Toggle automation", ToggleAutomationTool),
+    "add_automation": ("Add automation", AddAutomationTool),
+    "modify_dashboard": ("Modify dashboard (Lovelace)", ModifyDashboardTool),
+    "send_notification": ("Send notification", SendNotificationTool),
+    "get_error_log": ("Get error log", GetErrorLogTool),
+    "who_is_home": ("Who is home", WhoIsHomeTool),
+    "manage_list": ("Manage lists (shopping/todo)", ManageListTool),
+    "get_calendar_events": ("Get calendar events", GetCalendarEventsTool),
+}
+
+
+def get_custom_tool_options() -> list[dict[str, str]]:
+    """Return tool options for config UI."""
     return [
-        SetModelTool(hass, entry),
-        GetHistoryTool(hass, entry),
-        GetLogbookTool(hass, entry),
-        RenderTemplateTool(hass, entry),
-        GetStatisticsTool(hass, entry),
-        ListAutomationsTool(hass, entry),
-        ToggleAutomationTool(hass, entry),
-        AddAutomationTool(hass, entry),
-        ModifyDashboardTool(hass, entry),
-        SendNotificationTool(hass, entry),
-        GetErrorLogTool(hass, entry),
-        WhoIsHomeTool(hass, entry),
-        ManageListTool(hass, entry),
-        GetCalendarEventsTool(hass, entry),
+        {"value": name, "label": label}
+        for name, (label, _cls) in CUSTOM_TOOL_FACTORIES.items()
     ]
+
+
+def get_custom_tools(
+    hass: HomeAssistant, entry: ConfigEntry, enabled: list[str] | None = None
+) -> list[llm.Tool]:
+    """Get custom tools for the integration.
+
+    If enabled is provided, only tools with names in enabled are returned.
+    """
+    names = list(CUSTOM_TOOL_FACTORIES.keys()) if enabled is None else enabled
+    tools: list[llm.Tool] = []
+    for name in names:
+        if name not in CUSTOM_TOOL_FACTORIES:
+            continue
+        _label, cls = CUSTOM_TOOL_FACTORIES[name]
+        tools.append(cls(hass, entry))
+    return tools

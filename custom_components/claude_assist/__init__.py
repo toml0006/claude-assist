@@ -151,6 +151,18 @@ async def async_setup_entry(
 
     entry.runtime_data = client
 
+    # Migrate old LLM API id (claude_assist) to per-subentry ids (claude_assist.<subentry_id>)
+    for subentry in entry.subentries.values():
+        if subentry.subentry_type != "conversation":
+            continue
+        llm_apis = subentry.data.get("llm_hass_api")
+        if llm_apis == ["claude_assist"] or llm_apis == "claude_assist":
+            hass.config_entries.async_update_subentry(
+                entry,
+                subentry,
+                data={**subentry.data, "llm_hass_api": [f"claude_assist.{subentry.subentry_id}"]},
+            )
+
     # Set up periodic token refresh
     async def _periodic_refresh(_now: datetime.datetime) -> None:
         """Periodically refresh the OAuth token."""
@@ -166,11 +178,11 @@ async def async_setup_entry(
         )
     )
 
-    # Register custom LLM API with our extra tools
-    from .api import async_register_claude_assist_api  # noqa: C0415
+    # Register per-agent LLM APIs (one per conversation subentry)
+    from .api import async_register_claude_assist_apis  # noqa: C0415
 
-    unregister_api = async_register_claude_assist_api(hass, entry)
-    entry.async_on_unload(unregister_api)
+    unregister_apis = async_register_claude_assist_apis(hass, entry)
+    entry.async_on_unload(unregister_apis)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
