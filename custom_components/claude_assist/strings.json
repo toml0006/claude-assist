@@ -19,8 +19,8 @@
         }
       },
       "claude_oauth": {
-        "title": "Authenticate with Anthropic",
-        "description": "Sign in with your Claude subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize the app\n3. After authorizing, you'll see a page with your authorization code\n4. Copy and paste the code below\n\n**Redirect URI:** `{redirect_uri}`",
+        "title": "Authenticate with Claude",
+        "description": "Sign in with your Claude account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize the app\n3. After authorizing, you'll see a page with your authorization code\n4. Copy and paste the code below\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "name": "Name",
           "auth_code": "Authorization code"
@@ -36,16 +36,16 @@
         }
       },
       "openai_codex": {
-        "title": "Authenticate with OpenAI Codex",
-        "description": "Sign in with your ChatGPT subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL (or just the `code=` value)\n\n**Redirect URI:** `{redirect_uri}`",
+        "title": "Authenticate with ChatGPT (Codex)",
+        "description": "Sign in with your ChatGPT account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL (or just the `code=` value)\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "name": "Name",
           "auth_code": "Redirect URL or code"
         }
       },
       "gemini_cli": {
-        "title": "Authenticate with Gemini CLI",
-        "description": "Sign in with your Google account to authorize Cloud Code Assist (Gemini CLI).\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and consent\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL\n\n**Redirect URI:** `{redirect_uri}`",
+        "title": "Authenticate with Gemini Code Assist",
+        "description": "Sign in with your Google account to authorize Gemini Code Assist.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and consent\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "name": "Name",
           "google_project_id": "Google Cloud project ID (optional)",

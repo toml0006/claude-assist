@@ -140,11 +140,11 @@ def _default_conversation_options(provider: str) -> dict[str, Any]:
 def _default_conversation_title(provider: str) -> str:
     """Return the default subentry title for a provider."""
     if provider == PROVIDER_OPENAI:
-        return "OpenAI conversation"
+        return "OpenAI API conversation"
     if provider == PROVIDER_OPENAI_CODEX:
-        return "OpenAI Codex conversation"
+        return "ChatGPT (Codex) conversation"
     if provider == PROVIDER_GOOGLE_GEMINI_CLI:
-        return "Gemini conversation"
+        return "Gemini Code Assist conversation"
     return DEFAULT_CONVERSATION_NAME
 
 
@@ -473,19 +473,19 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                         SelectSelectorConfig(
                             options=[
                                 SelectOptionDict(
-                                    label="Claude subscription (OAuth)",
+                                    label="Claude (OAuth subscription)",
                                     value=PROVIDER_CLAUDE_OAUTH,
                                 ),
                                 SelectOptionDict(
-                                    label="OpenAI / compatible (API key)",
+                                    label="OpenAI API / compatible (API key)",
                                     value=PROVIDER_OPENAI,
                                 ),
                                 SelectOptionDict(
-                                    label="OpenAI Codex (ChatGPT OAuth subscription)",
+                                    label="ChatGPT (Codex) (OAuth subscription)",
                                     value=PROVIDER_OPENAI_CODEX,
                                 ),
                                 SelectOptionDict(
-                                    label="Google Gemini CLI (OAuth subscription)",
+                                    label="Gemini Code Assist (OAuth subscription)",
                                     value=PROVIDER_GOOGLE_GEMINI_CLI,
                                 ),
                             ],
@@ -500,11 +500,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_claude_oauth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure Claude subscription OAuth provider."""
+        """Configure Claude OAuth subscription provider."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            entry_title = str(user_input.get(CONF_NAME) or "Claude subscription")
+            entry_title = str(user_input.get(CONF_NAME) or "Claude")
 
             # User has submitted the authorization code
             raw_input = str(user_input.get("auth_code", "")).strip()
@@ -611,7 +611,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="claude_oauth",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_NAME, default="Claude subscription"): str,
+                    vol.Optional(CONF_NAME, default="Claude"): str,
                     vol.Required("auth_code"): str,
                 }
             ),
@@ -689,11 +689,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_openai_codex(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure OpenAI Codex (ChatGPT OAuth subscription) provider."""
+        """Configure ChatGPT (Codex) OAuth subscription provider."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            entry_title = str(user_input.get(CONF_NAME) or "OpenAI Codex")
+            entry_title = str(user_input.get(CONF_NAME) or "ChatGPT (Codex)")
 
             raw_input = str(user_input.get("auth_code", "")).strip()
             code, callback_state = _parse_oauth_redirect_input(raw_input)
@@ -799,7 +799,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="openai_codex",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_NAME, default="OpenAI Codex"): str,
+                    vol.Optional(CONF_NAME, default="ChatGPT (Codex)"): str,
                     vol.Required("auth_code"): str,
                 }
             ),
@@ -813,11 +813,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_gemini_cli(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure Google Gemini CLI (Cloud Code Assist OAuth) provider."""
+        """Configure Gemini Code Assist OAuth subscription provider."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            entry_title = str(user_input.get(CONF_NAME) or "Gemini CLI")
+            entry_title = str(user_input.get(CONF_NAME) or "Gemini Code Assist")
             project_hint = str(user_input.get(CONF_GOOGLE_PROJECT_ID) or "").strip() or None
 
             raw_input = str(user_input.get("auth_code", "")).strip()
@@ -946,7 +946,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="gemini_cli",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_NAME, default="Gemini CLI"): str,
+                    vol.Optional(CONF_NAME, default="Gemini Code Assist"): str,
                     vol.Optional(CONF_GOOGLE_PROJECT_ID): str,
                     vol.Required("auth_code"): str,
                 }
