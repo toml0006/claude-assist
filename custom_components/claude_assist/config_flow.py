@@ -139,6 +139,8 @@ def _default_conversation_options(provider: str) -> dict[str, Any]:
 
 def _default_conversation_title(provider: str) -> str:
     """Return the default subentry title for a provider."""
+    if provider == PROVIDER_CLAUDE_OAUTH:
+        return "Claude conversation"
     if provider == PROVIDER_OPENAI:
         return "OpenAI API conversation"
     if provider == PROVIDER_OPENAI_CODEX:
@@ -473,7 +475,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                         SelectSelectorConfig(
                             options=[
                                 SelectOptionDict(
-                                    label="Claude (OAuth subscription)",
+                                    label="Claude Pro/Max (OAuth subscription)",
                                     value=PROVIDER_CLAUDE_OAUTH,
                                 ),
                                 SelectOptionDict(
@@ -481,11 +483,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                                     value=PROVIDER_OPENAI,
                                 ),
                                 SelectOptionDict(
-                                    label="ChatGPT (Codex) (OAuth subscription)",
+                                    label="ChatGPT Plus/Pro (Codex) (OAuth subscription)",
                                     value=PROVIDER_OPENAI_CODEX,
                                 ),
                                 SelectOptionDict(
-                                    label="Gemini Code Assist (OAuth subscription)",
+                                    label="Gemini Code Assist Standard/Enterprise (OAuth subscription)",
                                     value=PROVIDER_GOOGLE_GEMINI_CLI,
                                 ),
                             ],
