@@ -440,18 +440,18 @@ def get_exposed_entities(hass: HomeAssistant) -> list[dict[str, Any]]:
 
 ---
 
-## Adapting for claude-assist (llm.Tool Pattern)
+## Adapting for ai-subscription-assist (llm.Tool Pattern)
 
 ### Key Insight
 
-Extended OpenAI Conversation **bypasses** HA's `llm.Tool` system entirely. To achieve similar functionality in claude-assist while using the standard HA pattern, we need to:
+Extended OpenAI Conversation **bypasses** HA's `llm.Tool` system entirely. To achieve similar functionality in ai-subscription-assist while using the standard HA pattern, we need to:
 
 1. **Register tools via `llm.Tool`** (as we currently do)
 2. **Implement the same underlying functionality** in our tool implementations
 
 ### Migration Strategy
 
-| Extended OpenAI Function | claude-assist Implementation |
+| Extended OpenAI Function | ai-subscription-assist Implementation |
 |-------------------------|------------------------------|
 | `native: execute_service` | Already handled by HA's `AssistAPI` |
 | `native: get_history` | New `llm.Tool` → call recorder API |
@@ -566,7 +566,7 @@ class GetStatisticsTool(llm.Tool):
 # In api.py or wherever LLM API is set up
 @callback
 def async_register_api(hass: HomeAssistant):
-    """Register the Claude Assist LLM API."""
+    """Register the AI Subscription Assist LLM API."""
     
     async def async_get_tools(llm_context: llm.LLMContext) -> list[llm.Tool]:
         tools = []

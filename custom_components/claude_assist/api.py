@@ -1,4 +1,4 @@
-"""Custom LLM API for Claude Assist with extended tools."""
+"""Custom LLM API for AI Subscription Assist with extended tools."""
 
 from __future__ import annotations
 
@@ -26,10 +26,10 @@ class ClaudeAssistSubentryAPI(llm.API):
         self._entry = entry
         self._subentry_id = subentry_id
         # Name shown in HA UI (LLM API selector)
-        name = f"Claude Assist ({subentry_id})"
+        name = f"AI Subscription Assist ({entry.title}) ({subentry_id})"
         sub = entry.subentries.get(subentry_id)
         if sub is not None:
-            name = f"Claude Assist — {sub.title}"
+            name = f"AI Subscription Assist — {entry.title} — {sub.title}"
         super().__init__(hass=hass, id=_api_id_for_subentry(subentry_id), name=name)
 
     async def async_get_api_instance(self, llm_context: llm.LLMContext) -> llm.APIInstance:
@@ -42,7 +42,12 @@ class ClaudeAssistSubentryAPI(llm.API):
             if isinstance(enabled, str):
                 enabled = [enabled]
 
-        custom_tools = get_custom_tools(self.hass, self._entry, enabled=enabled)
+        custom_tools = get_custom_tools(
+            self.hass,
+            self._entry,
+            enabled=enabled,
+            subentry_id=self._subentry_id,
+        )
         tools = list(assist.tools) + custom_tools
 
         # Extend Assist prompt so the model knows these tools exist.
@@ -74,7 +79,7 @@ class ClaudeAssistSubentryAPI(llm.API):
 
 @callback
 def async_register_claude_assist_apis(hass: HomeAssistant, entry: ConfigEntry) -> Callable[[], None]:
-    """Register per-subentry Claude Assist APIs.
+    """Register per-subentry AI Subscription Assist APIs.
 
     Returns an unregister callable.
     """
@@ -86,7 +91,9 @@ def async_register_claude_assist_apis(hass: HomeAssistant, entry: ConfigEntry) -
         try:
             unregisters.append(llm.async_register_api(hass, api))
         except Exception as err:
-            LOGGER.debug("Claude Assist API registration skipped (%s): %s", api.id, err)
+            LOGGER.debug(
+                "AI Subscription Assist API registration skipped (%s): %s", api.id, err
+            )
 
     def _unregister_all() -> None:
         for unreg in unregisters:

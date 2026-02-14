@@ -1,0 +1,21 @@
+- id: dev_toggle_flag
+  alias: "Dev: Toggle Flag"
+  trigger:
+    - platform: time_pattern
+      minutes: "/1"
+  action:
+    - service: input_boolean.toggle
+      target:
+        entity_id: input_boolean.dev_flag
+
+- id: dev_randomize_power
+  alias: "Dev: Randomize Power"
+  trigger:
+    - platform: time_pattern
+      minutes: "/1"
+  action:
+    - service: input_number.set_value
+      target:
+        entity_id: input_number.dev_power
+      data:
+        value: "{{ range(0, 2000) | random }}"

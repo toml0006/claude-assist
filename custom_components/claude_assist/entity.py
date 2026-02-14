@@ -1,15 +1,25 @@
-"""Base entity for Claude Assist."""
+"""Base entity for AI Subscription Assist."""
 
 import base64
 from collections.abc import AsyncGenerator, Callable, Iterable
 from dataclasses import dataclass, field
 import json
-from mimetypes import guess_file_type
 from pathlib import Path
+import time
+
+try:
+    from mimetypes import guess_file_type
+except ImportError:
+    from mimetypes import guess_type
+
+    def guess_file_type(path: Path) -> tuple[str | None, str | None]:
+        """Compat shim for Python < 3.13."""
+        return guess_type(str(path))
 from typing import Any
 
 import anthropic
 from anthropic import AsyncStream
+import httpx
 from anthropic.types import (
     Base64ImageSourceParam,
     Base64PDFSourceParam,
@@ -76,8 +86,12 @@ from homeassistant.util import slugify
 
 from . import ClaudeAssistConfigEntry
 from .const import (
+    CONF_ACCESS_TOKEN,
     CONF_CHAT_MODEL,
+    CONF_GOOGLE_PROJECT_ID,
     CONF_MAX_TOKENS,
+    CONF_OPENAI_CODEX_ACCOUNT_ID,
+    CONF_PROVIDER,
     CONF_TEMPERATURE,
     CONF_THINKING_BUDGET,
     CONF_THINKING_EFFORT,
@@ -89,11 +103,18 @@ from .const import (
     CONF_WEB_SEARCH_TIMEZONE,
     CONF_WEB_SEARCH_USER_LOCATION,
     DEFAULT,
+    DEFAULT_GEMINI_CLI_BASE_URL,
+    DEFAULT_OPENAI_CHAT_MODEL,
+    DEFAULT_OPENAI_CODEX_BASE_URL,
     DOMAIN,
     LOGGER,
     MIN_THINKING_BUDGET,
     NON_ADAPTIVE_THINKING_MODELS,
     NON_THINKING_MODELS,
+    PROVIDER_CLAUDE_OAUTH,
+    PROVIDER_OPENAI,
+    PROVIDER_OPENAI_CODEX,
+    PROVIDER_GOOGLE_GEMINI_CLI,
 )
 
 # Max number of back and forth with the LLM to generate a response
@@ -109,6 +130,44 @@ def _format_tool(
         description=tool.description or "",
         input_schema=convert(tool.parameters, custom_serializer=custom_serializer),
     )
+
+
+def _format_openai_tool(
+    tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
+) -> dict[str, Any]:
+    """Format tool specification for OpenAI Chat Completions."""
+    return {
+        "type": "function",
+        "function": {
+            "name": tool.name,
+            "description": tool.description or "",
+            "parameters": convert(tool.parameters, custom_serializer=custom_serializer),
+        },
+    }
+
+
+def _format_openai_responses_tool(
+    tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
+) -> dict[str, Any]:
+    """Format tool specification for OpenAI Responses API (Codex backend)."""
+    return {
+        "type": "function",
+        "name": tool.name,
+        "description": tool.description or "",
+        "parameters": convert(tool.parameters, custom_serializer=custom_serializer),
+        "strict": False,
+    }
+
+
+def _format_gemini_tool(
+    tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
+) -> dict[str, Any]:
+    """Format tool declaration for Cloud Code Assist (Gemini CLI)."""
+    return {
+        "name": tool.name,
+        "description": tool.description or "",
+        "parametersJsonSchema": convert(tool.parameters, custom_serializer=custom_serializer),
+    }
 
 
 @dataclass(slots=True)
@@ -333,6 +392,212 @@ def _convert_content(
     return messages
 
 
+def _convert_content_openai(
+    chat_content: Iterable[conversation.Content],
+) -> list[dict[str, Any]]:
+    """Transform HA chat_log content into OpenAI Chat Completions format."""
+    messages: list[dict[str, Any]] = []
+
+    for content in chat_content:
+        if isinstance(content, conversation.SystemContent):
+            messages.append({"role": "system", "content": content.content})
+        elif isinstance(content, conversation.UserContent):
+            if content.attachments:
+                raise HomeAssistantError(
+                    "Attachments are not supported by the OpenAI backend"
+                )
+            messages.append({"role": "user", "content": content.content})
+        elif isinstance(content, conversation.ToolResultContent):
+            messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": content.tool_call_id,
+                    "content": json_dumps(content.tool_result),
+                }
+            )
+        elif isinstance(content, conversation.AssistantContent):
+            msg: dict[str, Any] = {
+                "role": "assistant",
+                "content": content.content,
+            }
+            if content.tool_calls:
+                msg["tool_calls"] = [
+                    {
+                        "id": tool_call.id,
+                        "type": "function",
+                        "function": {
+                            "name": tool_call.tool_name,
+                            "arguments": json_dumps(tool_call.tool_args),
+                        },
+                    }
+                    for tool_call in content.tool_calls
+                ]
+            messages.append(msg)
+        else:
+            raise TypeError(f"Unexpected content type: {type(content)}")
+
+    return messages
+
+
+def _convert_content_openai_codex(
+    chat_content: Iterable[conversation.Content],
+) -> list[dict[str, Any]]:
+    """Transform HA chat_log content into OpenAI Responses API input format."""
+    messages: list[dict[str, Any]] = []
+    msg_index = 0
+
+    for content in chat_content:
+        if isinstance(content, conversation.SystemContent):
+            # Passed via `instructions` in the request body.
+            continue
+
+        if isinstance(content, conversation.UserContent):
+            if content.attachments:
+                raise HomeAssistantError(
+                    "Attachments are not supported by the OpenAI Codex backend"
+                )
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": content.content,
+                        }
+                    ],
+                }
+            )
+            continue
+
+        if isinstance(content, conversation.AssistantContent):
+            if content.content:
+                msg_index += 1
+                messages.append(
+                    {
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": content.content,
+                                "annotations": [],
+                            }
+                        ],
+                        "status": "completed",
+                        "id": f"msg_{msg_index}",
+                    }
+                )
+
+            if content.tool_calls:
+                for tool_call in content.tool_calls:
+                    call_id, item_id = (
+                        tool_call.id.split("|", 1)
+                        if "|" in tool_call.id
+                        else (tool_call.id, f"fc_{tool_call.id}")
+                    )
+                    if not item_id.startswith("fc"):
+                        item_id = f"fc_{item_id}"
+                    messages.append(
+                        {
+                            "type": "function_call",
+                            "id": item_id,
+                            "call_id": call_id,
+                            "name": tool_call.tool_name,
+                            "arguments": json_dumps(tool_call.tool_args),
+                        }
+                    )
+            continue
+
+        if isinstance(content, conversation.ToolResultContent):
+            call_id = (
+                content.tool_call_id.split("|", 1)[0]
+                if "|" in content.tool_call_id
+                else content.tool_call_id
+            )
+            messages.append(
+                {
+                    "type": "function_call_output",
+                    "call_id": call_id,
+                    "output": json_dumps(content.tool_result),
+                }
+            )
+            continue
+
+        raise TypeError(f"Unexpected content type: {type(content)}")
+
+    return messages
+
+
+def _convert_content_gemini_cli(
+    chat_content: Iterable[conversation.Content],
+) -> list[dict[str, Any]]:
+    """Transform HA chat_log content into Cloud Code Assist Content[] format."""
+    contents: list[dict[str, Any]] = []
+
+    def _append_function_response(
+        tool_name: str, tool_call_id: str, tool_result: Any
+    ) -> None:
+        is_error = isinstance(tool_result, dict) and "error" in tool_result
+        response_value = json_dumps(tool_result)
+        part: dict[str, Any] = {
+            "functionResponse": {
+                "name": tool_name,
+                "response": {"error": response_value} if is_error else {"output": response_value},
+                "id": tool_call_id,
+            }
+        }
+        if contents and contents[-1].get("role") == "user":
+            parts = contents[-1].setdefault("parts", [])
+            if isinstance(parts, list) and any(
+                isinstance(p, dict) and "functionResponse" in p for p in parts
+            ):
+                parts.append(part)
+                return
+        contents.append({"role": "user", "parts": [part]})
+
+    for content in chat_content:
+        if isinstance(content, conversation.SystemContent):
+            # Passed separately as systemInstruction.
+            continue
+
+        if isinstance(content, conversation.UserContent):
+            if content.attachments:
+                raise HomeAssistantError(
+                    "Attachments are not supported by the Gemini CLI backend"
+                )
+            contents.append({"role": "user", "parts": [{"text": content.content}]})
+            continue
+
+        if isinstance(content, conversation.AssistantContent):
+            parts: list[dict[str, Any]] = []
+            if content.content:
+                parts.append({"text": content.content})
+            if content.tool_calls:
+                for tool_call in content.tool_calls:
+                    parts.append(
+                        {
+                            "functionCall": {
+                                "name": tool_call.tool_name,
+                                "args": tool_call.tool_args,
+                                "id": tool_call.id,
+                            }
+                        }
+                    )
+            if parts:
+                contents.append({"role": "model", "parts": parts})
+            continue
+
+        if isinstance(content, conversation.ToolResultContent):
+            _append_function_response(
+                content.tool_name, content.tool_call_id, content.tool_result
+            )
+            continue
+
+        raise TypeError(f"Unexpected content type: {type(content)}")
+
+    return contents
+
+
 async def _transform_stream(  # noqa: C901 - This is complex, but better to have it in one place
     chat_log: conversation.ChatLog,
     stream: AsyncStream[MessageStreamEvent],
@@ -546,7 +811,7 @@ def _create_token_stats(
 
 
 class ClaudeAssistBaseLLMEntity(Entity):
-    """Claude Assist base LLM entity."""
+    """AI Subscription Assist base LLM entity."""
 
     _attr_has_entity_name = True
     _attr_name = None
@@ -556,13 +821,588 @@ class ClaudeAssistBaseLLMEntity(Entity):
         self.entry = entry
         self.subentry = subentry
         self._attr_unique_id = subentry.subentry_id
+        provider = str(entry.data.get(CONF_PROVIDER, PROVIDER_CLAUDE_OAUTH))
+        manufacturer = "Anthropic"
+        if provider in (PROVIDER_OPENAI, PROVIDER_OPENAI_CODEX):
+            manufacturer = "OpenAI"
+        elif provider == PROVIDER_GOOGLE_GEMINI_CLI:
+            manufacturer = "Google"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=subentry.title,
-            manufacturer="Anthropic",
+            manufacturer=manufacturer,
             model=subentry.data.get(CONF_CHAT_MODEL, DEFAULT[CONF_CHAT_MODEL]),
             entry_type=dr.DeviceEntryType.SERVICE,
         )
+
+    async def _async_handle_chat_log_openai(
+        self,
+        chat_log: conversation.ChatLog,
+        structure_name: str | None = None,
+        structure: vol.Schema | None = None,
+    ) -> None:
+        """Generate an answer for the chat log using OpenAI Chat Completions."""
+        options = self.subentry.data
+        client = self.entry.runtime_data
+
+        api_key = getattr(client, "api_key", None)
+        base_url = getattr(client, "base_url", None)
+        http_client = getattr(client, "http_client", None)
+        if not api_key or not base_url or http_client is None:
+            raise HomeAssistantError("OpenAI client is not initialized")
+
+        model = str(options.get(CONF_CHAT_MODEL, DEFAULT_OPENAI_CHAT_MODEL))
+        max_tokens = options.get(CONF_MAX_TOKENS, DEFAULT[CONF_MAX_TOKENS])
+        temperature = options.get(CONF_TEMPERATURE, DEFAULT[CONF_TEMPERATURE])
+
+        tools: list[dict[str, Any]] = []
+        if chat_log.llm_api:
+            tools = [
+                _format_openai_tool(tool, chat_log.llm_api.custom_serializer)
+                for tool in chat_log.llm_api.tools
+            ]
+
+        tool_choice: dict[str, Any] | None = None
+        output_tool: str | None = None
+        if structure and structure_name:
+            output_tool = slugify(structure_name)
+            tools.append(
+                {
+                    "type": "function",
+                    "function": {
+                        "name": output_tool,
+                        "description": "Use this tool to reply to the user",
+                        "parameters": convert(
+                            structure,
+                            custom_serializer=chat_log.llm_api.custom_serializer
+                            if chat_log.llm_api
+                            else llm.selector_serializer,
+                        ),
+                    },
+                }
+            )
+            tool_choice = {"type": "function", "function": {"name": output_tool}}
+
+        headers = {"Authorization": f"Bearer {api_key}"}
+
+        for _iteration in range(MAX_TOOL_ITERATIONS):
+            messages = _convert_content_openai(chat_log.content)
+
+            payload: dict[str, Any] = {
+                "model": model,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+            if tools:
+                payload["tools"] = tools
+            if tool_choice:
+                payload["tool_choice"] = tool_choice
+
+            try:
+                resp = await http_client.post(
+                    f"{base_url}/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as err:
+                raise HomeAssistantError(
+                    f"Sorry, I had a problem talking to OpenAI: {err}"
+                ) from err
+
+            data = resp.json()
+
+            if isinstance(data.get("usage"), dict):
+                usage = data["usage"]
+                chat_log.async_trace(
+                    {
+                        "stats": {
+                            "input_tokens": usage.get("prompt_tokens", 0),
+                            "output_tokens": usage.get("completion_tokens", 0),
+                        }
+                    }
+                )
+
+            choices = data.get("choices") or []
+            if not choices or not isinstance(choices[0], dict):
+                raise HomeAssistantError("OpenAI response did not include any choices")
+
+            message = choices[0].get("message") or {}
+            if not isinstance(message, dict):
+                raise HomeAssistantError("OpenAI response message was invalid")
+
+            if message.get("refusal"):
+                raise HomeAssistantError("Potential policy violation detected")
+
+            assistant_text = message.get("content")
+            tool_calls_raw = message.get("tool_calls")
+            if not tool_calls_raw and message.get("function_call"):
+                tool_calls_raw = [
+                    {
+                        "id": "call_1",
+                        "type": "function",
+                        "function": message.get("function_call"),
+                    }
+                ]
+
+            tool_inputs: list[llm.ToolInput] = []
+            if tool_calls_raw:
+                if not isinstance(tool_calls_raw, list):
+                    raise HomeAssistantError("OpenAI tool_calls was not a list")
+                for call in tool_calls_raw:
+                    if not isinstance(call, dict):
+                        continue
+                    call_id = str(call.get("id") or "")
+                    function = call.get("function") or {}
+                    if not isinstance(function, dict):
+                        continue
+                    name = str(function.get("name") or "")
+                    arguments = function.get("arguments", "") or ""
+
+                    if not call_id or not name:
+                        continue
+
+                    # If Home Assistant requested a structured output schema, treat the
+                    # "output tool" call as the final response instead of an actual
+                    # tool call to execute.
+                    if output_tool and name == output_tool:
+                        if isinstance(arguments, str):
+                            assistant_text = (assistant_text or "") + arguments
+                        elif isinstance(arguments, dict):
+                            assistant_text = (assistant_text or "") + json_dumps(arguments)
+                        continue
+
+                    if isinstance(arguments, str):
+                        try:
+                            args = json.loads(arguments) if arguments else {}
+                        except json.JSONDecodeError as err:
+                            raise HomeAssistantError(
+                                f"Model returned invalid JSON arguments for tool {name}"
+                            ) from err
+                    elif isinstance(arguments, dict):
+                        args = arguments
+                    else:
+                        args = {}
+
+                    tool_inputs.append(
+                        llm.ToolInput(
+                            id=call_id,
+                            tool_name=name,
+                            tool_args=args,
+                            external=False,
+                        )
+                    )
+
+            async def _delta_stream() -> AsyncGenerator[
+                conversation.AssistantContentDeltaDict
+                | conversation.ToolResultContentDeltaDict
+            ]:
+                yield {"role": "assistant"}
+                if assistant_text:
+                    yield {"content": str(assistant_text)}
+                if tool_inputs:
+                    yield {"tool_calls": tool_inputs}
+
+            async for _content in chat_log.async_add_delta_content_stream(
+                self.entity_id, _delta_stream()
+            ):
+                pass
+
+            if not chat_log.unresponded_tool_results:
+                break
+
+    async def _async_handle_chat_log_openai_codex(
+        self,
+        chat_log: conversation.ChatLog,
+        structure_name: str | None = None,
+        structure: vol.Schema | None = None,
+    ) -> None:
+        """Generate an answer for the chat log using OpenAI Codex (ChatGPT OAuth)."""
+        options = self.subentry.data
+        client = self.entry.runtime_data
+
+        access_token = getattr(client, "access_token", None) or self.entry.data.get(
+            CONF_ACCESS_TOKEN
+        )
+        account_id = getattr(client, "account_id", None) or self.entry.data.get(
+            CONF_OPENAI_CODEX_ACCOUNT_ID
+        )
+        base_url = getattr(client, "base_url", None) or DEFAULT_OPENAI_CODEX_BASE_URL
+        http_client = getattr(client, "http_client", None)
+        if not access_token or not account_id or not base_url or http_client is None:
+            raise HomeAssistantError("OpenAI Codex client is not initialized")
+
+        system = chat_log.content[0]
+        if not isinstance(system, conversation.SystemContent):
+            raise TypeError("First message must be a system message")
+
+        model = str(options.get(CONF_CHAT_MODEL, "gpt-5.2-codex"))
+        max_tokens = options.get(CONF_MAX_TOKENS, DEFAULT[CONF_MAX_TOKENS])
+        temperature = options.get(CONF_TEMPERATURE, DEFAULT[CONF_TEMPERATURE])
+
+        tools: list[dict[str, Any]] = []
+        if chat_log.llm_api:
+            tools = [
+                _format_openai_responses_tool(tool, chat_log.llm_api.custom_serializer)
+                for tool in chat_log.llm_api.tools
+            ]
+
+        output_tool: str | None = None
+        instructions = system.content
+        if structure and structure_name:
+            output_tool = slugify(structure_name)
+            tools.append(
+                {
+                    "type": "function",
+                    "name": output_tool,
+                    "description": "Use this tool to reply to the user",
+                    "parameters": convert(
+                        structure,
+                        custom_serializer=chat_log.llm_api.custom_serializer
+                        if chat_log.llm_api
+                        else llm.selector_serializer,
+                    ),
+                    "strict": False,
+                }
+            )
+            instructions = (
+                f"{instructions}\n\nThe final answer MUST be provided by calling the '{output_tool}' tool."
+            )
+
+        codex_base = str(base_url).rstrip("/")
+        if codex_base.endswith("/codex/responses"):
+            codex_url = codex_base
+        elif codex_base.endswith("/codex"):
+            codex_url = f"{codex_base}/responses"
+        else:
+            codex_url = f"{codex_base}/codex/responses"
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "ChatGPT-Account-Id": str(account_id),
+            "OpenAI-Beta": "responses=experimental",
+            "originator": "pi",
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "User-Agent": "HomeAssistant",
+        }
+
+        for _iteration in range(MAX_TOOL_ITERATIONS):
+            input_messages = _convert_content_openai_codex(chat_log.content[1:])
+
+            payload: dict[str, Any] = {
+                "model": model,
+                "store": False,
+                "stream": False,
+                "instructions": instructions,
+                "input": input_messages,
+                "temperature": temperature,
+                "tool_choice": "auto",
+                "parallel_tool_calls": True,
+                "text": {"verbosity": "medium"},
+            }
+            if max_tokens:
+                payload["max_output_tokens"] = max_tokens
+            if tools:
+                payload["tools"] = tools
+
+            try:
+                resp = await http_client.post(
+                    codex_url,
+                    headers=headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+            except httpx.HTTPError as err:
+                raise HomeAssistantError(
+                    f"Sorry, I had a problem talking to OpenAI Codex: {err}"
+                ) from err
+
+            data = resp.json()
+            usage = data.get("usage")
+            if isinstance(usage, dict):
+                chat_log.async_trace(
+                    {
+                        "stats": {
+                            "input_tokens": usage.get("input_tokens", 0),
+                            "output_tokens": usage.get("output_tokens", 0),
+                        }
+                    }
+                )
+
+            output_items = data.get("output") or []
+            if not isinstance(output_items, list):
+                raise HomeAssistantError("OpenAI Codex response output was invalid")
+
+            assistant_parts: list[str] = []
+            tool_inputs: list[llm.ToolInput] = []
+
+            for item in output_items:
+                if not isinstance(item, dict):
+                    continue
+                item_type = item.get("type")
+                if item_type == "message":
+                    content_items = item.get("content") or []
+                    if not isinstance(content_items, list):
+                        continue
+                    for part in content_items:
+                        if not isinstance(part, dict):
+                            continue
+                        part_type = part.get("type")
+                        if part_type == "output_text" and isinstance(part.get("text"), str):
+                            assistant_parts.append(part["text"])
+                        elif part_type == "refusal":
+                            raise HomeAssistantError("Potential policy violation detected")
+                elif item_type == "function_call":
+                    name = item.get("name")
+                    if not isinstance(name, str) or not name:
+                        continue
+                    arguments_raw = item.get("arguments") or ""
+                    if output_tool and name == output_tool:
+                        if isinstance(arguments_raw, str):
+                            assistant_parts.append(arguments_raw)
+                        elif isinstance(arguments_raw, dict):
+                            assistant_parts.append(json_dumps(arguments_raw))
+                        continue
+
+                    call_id = item.get("call_id")
+                    item_id = item.get("id")
+                    if not isinstance(call_id, str) or not call_id:
+                        continue
+                    if not isinstance(item_id, str) or not item_id:
+                        item_id = f"fc_{call_id}"
+                    tool_call_id = f"{call_id}|{item_id}"
+
+                    try:
+                        args = (
+                            json.loads(arguments_raw)
+                            if isinstance(arguments_raw, str) and arguments_raw
+                            else arguments_raw
+                            if isinstance(arguments_raw, dict)
+                            else {}
+                        )
+                    except json.JSONDecodeError as err:
+                        raise HomeAssistantError(
+                            f"Model returned invalid JSON arguments for tool {name}"
+                        ) from err
+
+                    tool_inputs.append(
+                        llm.ToolInput(
+                            id=tool_call_id,
+                            tool_name=name,
+                            tool_args=args,
+                            external=False,
+                        )
+                    )
+
+            assistant_text = "".join(assistant_parts) or None
+
+            async def _delta_stream() -> AsyncGenerator[
+                conversation.AssistantContentDeltaDict
+                | conversation.ToolResultContentDeltaDict
+            ]:
+                yield {"role": "assistant"}
+                if assistant_text:
+                    yield {"content": assistant_text}
+                if tool_inputs:
+                    yield {"tool_calls": tool_inputs}
+
+            async for _content in chat_log.async_add_delta_content_stream(
+                self.entity_id, _delta_stream()
+            ):
+                pass
+
+            if not chat_log.unresponded_tool_results:
+                break
+
+    async def _async_handle_chat_log_gemini_cli(
+        self,
+        chat_log: conversation.ChatLog,
+        structure_name: str | None = None,
+        structure: vol.Schema | None = None,
+    ) -> None:
+        """Generate an answer for the chat log using Gemini CLI (Cloud Code Assist)."""
+        options = self.subentry.data
+        client = self.entry.runtime_data
+
+        access_token = getattr(client, "access_token", None)
+        project_id = getattr(client, "project_id", None) or self.entry.data.get(
+            CONF_GOOGLE_PROJECT_ID
+        )
+        base_url = getattr(client, "base_url", None) or DEFAULT_GEMINI_CLI_BASE_URL
+        http_client = getattr(client, "http_client", None)
+        if not access_token or not project_id or not base_url or http_client is None:
+            raise HomeAssistantError("Gemini CLI client is not initialized")
+
+        system = chat_log.content[0]
+        if not isinstance(system, conversation.SystemContent):
+            raise TypeError("First message must be a system message")
+
+        model = str(options.get(CONF_CHAT_MODEL, "gemini-2.5-flash"))
+        max_tokens = options.get(CONF_MAX_TOKENS, DEFAULT[CONF_MAX_TOKENS])
+        temperature = options.get(CONF_TEMPERATURE, DEFAULT[CONF_TEMPERATURE])
+
+        tool_decls: list[dict[str, Any]] = []
+        if chat_log.llm_api:
+            tool_decls = [
+                _format_gemini_tool(tool, chat_log.llm_api.custom_serializer)
+                for tool in chat_log.llm_api.tools
+            ]
+
+        output_tool: str | None = None
+        if structure and structure_name:
+            output_tool = slugify(structure_name)
+            tool_decls.append(
+                {
+                    "name": output_tool,
+                    "description": "Use this tool to reply to the user",
+                    "parametersJsonSchema": convert(
+                        structure,
+                        custom_serializer=chat_log.llm_api.custom_serializer
+                        if chat_log.llm_api
+                        else llm.selector_serializer,
+                    ),
+                }
+            )
+
+        endpoint = str(base_url or DEFAULT_GEMINI_CLI_BASE_URL).rstrip("/")
+        url = f"{endpoint}/v1internal:streamGenerateContent?alt=sse"
+
+        headers = {
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "User-Agent": "google-cloud-sdk vscode_cloudshelleditor/0.1",
+            "X-Goog-Api-Client": "gl-python/3.13",
+            "Client-Metadata": json_dumps(
+                {
+                    "ideType": "IDE_UNSPECIFIED",
+                    "platform": "PLATFORM_UNSPECIFIED",
+                    "pluginType": "GEMINI",
+                }
+            ),
+        }
+
+        for _iteration in range(MAX_TOOL_ITERATIONS):
+            contents = _convert_content_gemini_cli(chat_log.content[1:])
+
+            request: dict[str, Any] = {
+                "contents": contents,
+                "systemInstruction": {"parts": [{"text": system.content}]}
+                if system.content
+                else None,
+            }
+            generation_config: dict[str, Any] = {}
+            if temperature is not None:
+                generation_config["temperature"] = temperature
+            if max_tokens is not None:
+                generation_config["maxOutputTokens"] = max_tokens
+            if generation_config:
+                request["generationConfig"] = generation_config
+
+            if tool_decls:
+                request["tools"] = [{"functionDeclarations": tool_decls}]
+                request["toolConfig"] = {
+                    "functionCallingConfig": {"mode": "AUTO"}
+                }
+
+            body = {
+                "project": str(project_id),
+                "model": model,
+                "request": {k: v for k, v in request.items() if v is not None},
+                "userAgent": "homeassistant",
+                "requestId": f"ha-{int(time.time()*1000)}",
+            }
+
+            tool_inputs: list[llm.ToolInput] = []
+
+            async def _delta_stream() -> AsyncGenerator[
+                conversation.AssistantContentDeltaDict
+                | conversation.ToolResultContentDeltaDict
+            ]:
+                yield {"role": "assistant"}
+                async with http_client.stream(
+                    "POST",
+                    url,
+                    headers=headers,
+                    json=body,
+                ) as resp:
+                    resp.raise_for_status()
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        json_str = line[5:].strip()
+                        if not json_str:
+                            continue
+                        try:
+                            chunk = json.loads(json_str)
+                        except Exception:
+                            continue
+
+                        response_data = chunk.get("response")
+                        if not isinstance(response_data, dict):
+                            continue
+
+                        candidate = None
+                        candidates = response_data.get("candidates")
+                        if isinstance(candidates, list) and candidates:
+                            candidate = candidates[0]
+                        if not isinstance(candidate, dict):
+                            continue
+
+                        content_obj = candidate.get("content")
+                        if isinstance(content_obj, dict):
+                            parts = content_obj.get("parts")
+                            if isinstance(parts, list):
+                                for part in parts:
+                                    if not isinstance(part, dict):
+                                        continue
+                                    if isinstance(part.get("text"), str):
+                                        yield {"content": part["text"]}
+                                    function_call = part.get("functionCall")
+                                    if isinstance(function_call, dict):
+                                        name = function_call.get("name")
+                                        args = function_call.get("args") or {}
+                                        call_id = function_call.get("id") or f"call_{len(tool_inputs)+1}"
+                                        if (
+                                            output_tool
+                                            and isinstance(name, str)
+                                            and name == output_tool
+                                        ):
+                                            yield {"content": json_dumps(args)}
+                                            continue
+                                        if isinstance(name, str) and name:
+                                            tool_inputs.append(
+                                                llm.ToolInput(
+                                                    id=str(call_id),
+                                                    tool_name=name,
+                                                    tool_args=args
+                                                    if isinstance(args, dict)
+                                                    else {},
+                                                    external=False,
+                                                )
+                                            )
+                                            yield {"tool_calls": tool_inputs[-1:]}
+
+                        usage_meta = response_data.get("usageMetadata")
+                        if isinstance(usage_meta, dict):
+                            chat_log.async_trace(
+                                {
+                                    "stats": {
+                                        "input_tokens": usage_meta.get("promptTokenCount", 0),
+                                        "output_tokens": usage_meta.get("candidatesTokenCount", 0),
+                                    }
+                                }
+                            )
+
+            async for _content in chat_log.async_add_delta_content_stream(
+                self.entity_id, _delta_stream()
+            ):
+                pass
+
+            if not chat_log.unresponded_tool_results:
+                break
 
     async def _async_handle_chat_log(
         self,
@@ -571,6 +1411,29 @@ class ClaudeAssistBaseLLMEntity(Entity):
         structure: vol.Schema | None = None,
     ) -> None:
         """Generate an answer for the chat log."""
+        provider = str(self.entry.data.get(CONF_PROVIDER, PROVIDER_CLAUDE_OAUTH))
+        if provider == PROVIDER_OPENAI:
+            await self._async_handle_chat_log_openai(
+                chat_log,
+                structure_name=structure_name,
+                structure=structure,
+            )
+            return
+        if provider == PROVIDER_OPENAI_CODEX:
+            await self._async_handle_chat_log_openai_codex(
+                chat_log,
+                structure_name=structure_name,
+                structure=structure,
+            )
+            return
+        if provider == PROVIDER_GOOGLE_GEMINI_CLI:
+            await self._async_handle_chat_log_gemini_cli(
+                chat_log,
+                structure_name=structure_name,
+                structure=structure,
+            )
+            return
+
         options = self.subentry.data
 
         system = chat_log.content[0]
