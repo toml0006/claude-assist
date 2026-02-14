@@ -36,7 +36,7 @@
         }
       },
       "openai_codex": {
-        "title": "Authenticate with ChatGPT Plus / Pro (Codex)",
+        "title": "Authenticate with ChatGPT Plus / Pro for Codex",
         "description": "Sign in with your **ChatGPT Plus**, **ChatGPT Pro**, **ChatGPT Business**, or **ChatGPT Enterprise** account to authorize Home Assistant for Codex.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL (or just the `code=` value)\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "name": "Name",
@@ -44,8 +44,8 @@
         }
       },
       "gemini_cli": {
-        "title": "Authenticate with Gemini Code Assist (Standard / Enterprise)",
-        "description": "Sign in with your Google account to authorize **Gemini Code Assist** (for individuals, Standard, or Enterprise).\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and consent\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL\n\n**Redirect URI:** `{redirect_uri}`",
+        "title": "Authenticate with Google AI Pro",
+        "description": "Sign in with your Google account to authorize **Google AI Pro**, which includes **Gemini Code Assist** and **Gemini CLI**.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and consent\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
           "name": "Name",
           "google_project_id": "Google Cloud project ID (optional)",

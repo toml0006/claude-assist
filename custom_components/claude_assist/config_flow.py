@@ -144,9 +144,9 @@ def _default_conversation_title(provider: str) -> str:
     if provider == PROVIDER_OPENAI:
         return "OpenAI API conversation"
     if provider == PROVIDER_OPENAI_CODEX:
-        return "ChatGPT (Codex) conversation"
+        return "ChatGPT Plus/Pro conversation"
     if provider == PROVIDER_GOOGLE_GEMINI_CLI:
-        return "Gemini Code Assist conversation"
+        return "Google AI Pro conversation"
     return DEFAULT_CONVERSATION_NAME
 
 
@@ -475,20 +475,20 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                         SelectSelectorConfig(
                             options=[
                                 SelectOptionDict(
-                                    label="Claude Pro/Max (OAuth subscription)",
+                                    label="Claude Pro/Max",
                                     value=PROVIDER_CLAUDE_OAUTH,
                                 ),
                                 SelectOptionDict(
-                                    label="OpenAI API / compatible (API key)",
-                                    value=PROVIDER_OPENAI,
-                                ),
-                                SelectOptionDict(
-                                    label="ChatGPT Plus/Pro (Codex) (OAuth subscription)",
+                                    label="ChatGPT Plus/Pro",
                                     value=PROVIDER_OPENAI_CODEX,
                                 ),
                                 SelectOptionDict(
-                                    label="Gemini Code Assist Standard/Enterprise (OAuth subscription)",
+                                    label="Google AI Pro",
                                     value=PROVIDER_GOOGLE_GEMINI_CLI,
+                                ),
+                                SelectOptionDict(
+                                    label="OpenAI API / compatible",
+                                    value=PROVIDER_OPENAI,
                                 ),
                             ],
                             mode=SelectSelectorMode.DROPDOWN,
@@ -691,11 +691,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_openai_codex(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure ChatGPT (Codex) OAuth subscription provider."""
+        """Configure ChatGPT Plus/Pro OAuth subscription provider."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            entry_title = str(user_input.get(CONF_NAME) or "ChatGPT (Codex)")
+            entry_title = str(user_input.get(CONF_NAME) or "ChatGPT Plus/Pro")
 
             raw_input = str(user_input.get("auth_code", "")).strip()
             code, callback_state = _parse_oauth_redirect_input(raw_input)
@@ -801,7 +801,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="openai_codex",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_NAME, default="ChatGPT (Codex)"): str,
+                    vol.Optional(CONF_NAME, default="ChatGPT Plus/Pro"): str,
                     vol.Required("auth_code"): str,
                 }
             ),
@@ -815,11 +815,11 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_gemini_cli(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Configure Gemini Code Assist OAuth subscription provider."""
+        """Configure Google AI Pro OAuth subscription provider."""
         errors: dict[str, str] = {}
 
         if user_input is not None:
-            entry_title = str(user_input.get(CONF_NAME) or "Gemini Code Assist")
+            entry_title = str(user_input.get(CONF_NAME) or "Google AI Pro")
             project_hint = str(user_input.get(CONF_GOOGLE_PROJECT_ID) or "").strip() or None
 
             raw_input = str(user_input.get("auth_code", "")).strip()
@@ -948,7 +948,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             step_id="gemini_cli",
             data_schema=vol.Schema(
                 {
-                    vol.Optional(CONF_NAME, default="Gemini Code Assist"): str,
+                    vol.Optional(CONF_NAME, default="Google AI Pro"): str,
                     vol.Optional(CONF_GOOGLE_PROJECT_ID): str,
                     vol.Required("auth_code"): str,
                 }
