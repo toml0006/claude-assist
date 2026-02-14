@@ -1,0 +1,44 @@
+# Development Home Assistant configuration for ai-subscription-assist.
+# This is intended to be run via dev/docker-compose.yml.
+
+default_config:
+
+homeassistant:
+  name: AI Subscription Assist Dev
+  time_zone: America/Los_Angeles
+  country: US
+
+logger:
+  default: info
+  logs:
+    custom_components.claude_assist: debug
+
+# Built-in demo entities (sensors, lights, media players, etc.).
+demo:
+
+# Ensure the shopping list / todo entity exists for ManageListTool.
+shopping_list:
+
+input_boolean:
+  dev_flag:
+    name: Dev Flag
+
+input_number:
+  dev_power:
+    name: Dev Power
+    min: 0
+    max: 2000
+    step: 1
+    unit_of_measurement: W
+
+# Template sensor that produces recorder statistics (state_class + unit).
+template:
+  - sensor:
+      - name: Dev Power Sensor
+        unique_id: dev_power_sensor
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.dev_power') | float(0) }}"
+
+automation: !include automations.yaml

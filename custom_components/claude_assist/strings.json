@@ -1,22 +1,55 @@
 {
   "config": {
-    "abort": {
-      "already_configured": "Already configured. Only a single configuration possible."
-    },
     "error": {
       "authentication_error": "Invalid authentication. Please re-authenticate.",
-      "cannot_connect": "Failed to connect to Anthropic servers.",
-      "timeout_connect": "Timeout trying to connect to Anthropic servers.",
+      "cannot_connect": "Failed to connect to the provider.",
+      "timeout_connect": "Timeout trying to connect to the provider.",
       "unknown": "Unexpected error occurred.",
       "no_auth_code": "Please enter the authorization code from the callback URL.",
+      "invalid_state": "OAuth state mismatch. Please start over and try again.",
+      "google_project_required": "This Google account requires a Cloud project ID. Set a project and re-authenticate.",
       "token_exchange_failed": "Failed to exchange authorization code for tokens. The code may have expired — please try again."
     },
     "step": {
       "user": {
+        "title": "Choose provider",
+        "description": "Select which backend this AI Subscription Assist configuration should use.",
+        "data": {
+          "provider": "Provider"
+        }
+      },
+      "claude_oauth": {
         "title": "Authenticate with Anthropic",
         "description": "Sign in with your Claude subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize the app\n3. After authorizing, you'll see a page with your authorization code\n4. Copy and paste the code below\n\n**Redirect URI:** `{redirect_uri}`",
         "data": {
+          "name": "Name",
           "auth_code": "Authorization code"
+        }
+      },
+      "openai": {
+        "title": "Configure OpenAI / compatible",
+        "description": "Enter an API key for OpenAI (or an OpenAI-compatible server) and optionally override the base URL.",
+        "data": {
+          "name": "Name",
+          "openai_api_key": "API key",
+          "openai_base_url": "Base URL"
+        }
+      },
+      "openai_codex": {
+        "title": "Authenticate with OpenAI Codex",
+        "description": "Sign in with your ChatGPT subscription account to authorize Home Assistant.\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and authorize\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL (or just the `code=` value)\n\n**Redirect URI:** `{redirect_uri}`",
+        "data": {
+          "name": "Name",
+          "auth_code": "Redirect URL or code"
+        }
+      },
+      "gemini_cli": {
+        "title": "Authenticate with Gemini CLI",
+        "description": "Sign in with your Google account to authorize Cloud Code Assist (Gemini CLI).\n\n1. [Click here to authenticate]({auth_url})\n2. Sign in and consent\n3. You'll be redirected to a localhost URL that may not load\n4. Copy and paste the full redirect URL\n\n**Redirect URI:** `{redirect_uri}`",
+        "data": {
+          "name": "Name",
+          "google_project_id": "Google Cloud project ID (optional)",
+          "auth_code": "Redirect URL"
         }
       }
     }
@@ -43,13 +76,17 @@
         },
         "init": {
           "data": {
+            "enabled_tools": "Enabled custom tools",
             "llm_hass_api": "Control Home Assistant",
             "name": "Name",
             "prompt": "Instructions",
-            "recommended": "Recommended model settings"
+            "recommended": "Recommended model settings",
+            "yolo_mode": "YOLO mode (unsafe)"
           },
           "data_description": {
-            "prompt": "Instruct how the LLM should respond. This can be a template."
+            "enabled_tools": "Choose which extra AI Subscription Assist tools this agent can call.",
+            "prompt": "Instruct how the LLM should respond. This can be a template.",
+            "yolo_mode": "Disables exposure safeguards and unlocks privileged tools (dashboard/automation edits, log access). Use only for trusted agents."
           },
           "title": "Basic settings"
         },

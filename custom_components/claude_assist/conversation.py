@@ -1,4 +1,4 @@
-"""Conversation support for Claude Assist."""
+"""Conversation support for AI Subscription Assist."""
 
 from typing import Literal
 
@@ -34,7 +34,7 @@ class ClaudeAssistConversationEntity(
     conversation.AbstractConversationAgent,
     ClaudeAssistBaseLLMEntity,
 ):
-    """Claude Assist conversation agent."""
+    """AI Subscription Assist conversation agent."""
 
     _attr_supports_streaming = True
 

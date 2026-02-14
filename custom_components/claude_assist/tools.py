@@ -1,4 +1,4 @@
-"""Custom tools for Claude Assist."""
+"""Custom tools for AI Subscription Assist."""
 
 from __future__ import annotations
 
@@ -12,19 +12,73 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import llm
 
-from .const import CONF_CHAT_MODEL, LOGGER
+from .const import CONF_CHAT_MODEL, CONF_YOLO_MODE, LOGGER
+from .tool_policy import (
+    default_enabled_tool_names,
+    normalize_enabled_tool_names,
+)
 
 
-class SetModelTool(llm.Tool):
-    """Tool to change the active Claude model."""
+def _is_yolo_mode(entry: ConfigEntry, subentry_id: str | None) -> bool:
+    """Return whether yolo mode is enabled for this subentry."""
+    if subentry_id is None:
+        return False
+    subentry = entry.subentries.get(subentry_id)
+    return bool(subentry and subentry.data.get(CONF_YOLO_MODE, False))
+
+
+def _is_entity_allowed(
+    hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None, entity_id: str
+) -> bool:
+    """Check if an entity can be accessed by this tool call."""
+    return _is_yolo_mode(entry, subentry_id) or _should_expose(hass, entity_id)
+
+
+def _validate_exposed_entities(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    subentry_id: str | None,
+    entity_ids: list[str],
+) -> list[str]:
+    """Return disallowed entity ids for this tool call."""
+    if _is_yolo_mode(entry, subentry_id):
+        return []
+    return [eid for eid in entity_ids if not _should_expose(hass, eid)]
+
+
+class ClaudeAssistTool(llm.Tool):
+    """Base class for custom tools with yolo helpers."""
+
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        subentry_id: str | None = None,
+    ) -> None:
+        self._hass = hass
+        self._entry = entry
+        self._subentry_id = subentry_id
+
+    def _is_yolo_mode(self) -> bool:
+        return _is_yolo_mode(self._entry, self._subentry_id)
+
+    def _is_entity_allowed(self, hass: HomeAssistant, entity_id: str) -> bool:
+        return _is_entity_allowed(hass, self._entry, self._subentry_id, entity_id)
+
+    def _validate_exposed_entities(
+        self, hass: HomeAssistant, entity_ids: list[str]
+    ) -> list[str]:
+        return _validate_exposed_entities(hass, self._entry, self._subentry_id, entity_ids)
+
+
+class SetModelTool(ClaudeAssistTool):
+    """Tool to change the active model for the conversation agent."""
 
     name = "set_model"
     description = (
-        "Change the Claude model used for this conversation. "
-        "Available models: "
-        "claude-haiku-4-5 (fastest, cheapest), "
-        "claude-sonnet-4-5-20250514 (balanced, good default), "
-        "claude-opus-4-5-20250514 (most capable, slowest). "
+        "Change the model used for this conversation agent. "
+        "Model IDs are provider-specific; you can provide any valid model string. "
+        "Examples: claude-sonnet-4-5-20250514, gpt-4o-mini, gpt-5.2-codex, gemini-2.5-pro. "
         "Call this when the user asks to switch models or wants a smarter/faster response."
     )
 
@@ -37,10 +91,11 @@ class SetModelTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -51,7 +106,13 @@ class SetModelTool(llm.Tool):
         """Change the model."""
         model = tool_input.tool_args["model"]
 
-        for subentry in self._entry.subentries.values():
+        subentries = list(self._entry.subentries.values())
+        if self._subentry_id:
+            scoped = self._entry.subentries.get(self._subentry_id)
+            if scoped and scoped.subentry_type == "conversation":
+                subentries = [scoped]
+
+        for subentry in subentries:
             if subentry.subentry_type != "conversation":
                 continue
 
@@ -79,12 +140,7 @@ def _should_expose(hass: HomeAssistant, entity_id: str) -> bool:
         return True
 
 
-def _validate_exposed_entities(hass: HomeAssistant, entity_ids: list[str]) -> list[str]:
-    """Validate entities are exposed. Return list of non-exposed entity IDs."""
-    return [eid for eid in entity_ids if not _should_expose(hass, eid)]
-
-
-class GetHistoryTool(llm.Tool):
+class GetHistoryTool(ClaudeAssistTool):
     """Tool to retrieve entity state history."""
 
     name = "get_history"
@@ -111,10 +167,11 @@ class GetHistoryTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -129,7 +186,7 @@ class GetHistoryTool(llm.Tool):
 
             entity_ids = tool_input.tool_args["entity_ids"]
 
-            not_exposed = _validate_exposed_entities(hass, entity_ids)
+            not_exposed = self._validate_exposed_entities(hass, entity_ids)
             if not_exposed:
                 return {"error": f"Entities not exposed: {not_exposed}"}
 
@@ -202,7 +259,7 @@ class GetHistoryTool(llm.Tool):
             return {"error": str(e)}
 
 
-class GetLogbookTool(llm.Tool):
+class GetLogbookTool(ClaudeAssistTool):
     """Tool to retrieve logbook entries."""
 
     name = "get_logbook"
@@ -225,10 +282,11 @@ class GetLogbookTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -246,7 +304,7 @@ class GetLogbookTool(llm.Tool):
             entity_ids = tool_input.tool_args.get("entity_ids")
 
             if entity_ids:
-                not_exposed = _validate_exposed_entities(hass, entity_ids)
+                not_exposed = self._validate_exposed_entities(hass, entity_ids)
                 if not_exposed:
                     return {"error": f"Entities not exposed: {not_exposed}"}
 
@@ -315,7 +373,7 @@ class GetLogbookTool(llm.Tool):
             return {"error": str(e)}
 
 
-class RenderTemplateTool(llm.Tool):
+class RenderTemplateTool(ClaudeAssistTool):
     """Tool to evaluate Jinja2 templates."""
 
     name = "render_template"
@@ -335,10 +393,11 @@ class RenderTemplateTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -360,7 +419,7 @@ class RenderTemplateTool(llm.Tool):
             return {"error": str(e)}
 
 
-class GetStatisticsTool(llm.Tool):
+class GetStatisticsTool(ClaudeAssistTool):
     """Tool to get recorder statistics."""
 
     name = "get_statistics"
@@ -391,10 +450,11 @@ class GetStatisticsTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -411,6 +471,10 @@ class GetStatisticsTool(llm.Tool):
             args = tool_input.tool_args
             statistic_ids = args["statistic_ids"]
             period = args.get("period", "hour")
+            entity_like_stat_ids = [sid for sid in statistic_ids if "." in sid]
+            not_exposed = self._validate_exposed_entities(hass, entity_like_stat_ids)
+            if not_exposed:
+                return {"error": f"Entities not exposed: {not_exposed}"}
 
             now = dt_util.utcnow()
             start_time_str = args.get("start_time")
@@ -449,7 +513,7 @@ class GetStatisticsTool(llm.Tool):
             return {"error": str(e)}
 
 
-class ListAutomationsTool(llm.Tool):
+class ListAutomationsTool(ClaudeAssistTool):
     """Tool to list all automations."""
 
     name = "list_automations"
@@ -460,10 +524,11 @@ class ListAutomationsTool(llm.Tool):
 
     parameters = vol.Schema({})
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -475,6 +540,8 @@ class ListAutomationsTool(llm.Tool):
         try:
             automations = []
             for state in hass.states.async_all("automation"):
+                if not self._is_entity_allowed(hass, state.entity_id):
+                    continue
                 automations.append({
                     "entity_id": state.entity_id,
                     "friendly_name": state.attributes.get("friendly_name", state.entity_id),
@@ -488,7 +555,7 @@ class ListAutomationsTool(llm.Tool):
             return {"error": str(e)}
 
 
-class ToggleAutomationTool(llm.Tool):
+class ToggleAutomationTool(ClaudeAssistTool):
     """Tool to enable/disable an automation."""
 
     name = "toggle_automation"
@@ -510,10 +577,11 @@ class ToggleAutomationTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -532,6 +600,8 @@ class ToggleAutomationTool(llm.Tool):
             state = hass.states.get(entity_id)
             if state is None:
                 return {"error": f"Automation {entity_id} not found"}
+            if not self._is_entity_allowed(hass, entity_id):
+                return {"error": f"Entity {entity_id} is not exposed"}
 
             await hass.services.async_call(
                 "automation", action, {"entity_id": entity_id}, blocking=True
@@ -549,7 +619,7 @@ class ToggleAutomationTool(llm.Tool):
             return {"error": str(e)}
 
 
-class AddAutomationTool(llm.Tool):
+class AddAutomationTool(ClaudeAssistTool):
     """Tool to create a new automation."""
 
     name = "add_automation"
@@ -568,10 +638,11 @@ class AddAutomationTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -584,6 +655,11 @@ class AddAutomationTool(llm.Tool):
             import os
             import time
             import yaml as pyyaml
+
+            if not self._is_yolo_mode():
+                return {
+                    "error": "add_automation requires yolo mode enabled for this agent"
+                }
 
             automation_config_str = tool_input.tool_args["automation_config"]
             parsed = pyyaml.safe_load(automation_config_str)
@@ -598,16 +674,45 @@ class AddAutomationTool(llm.Tool):
             if "id" not in config:
                 config["id"] = str(round(time.time() * 1000))
 
+            required_fields = {"alias", "trigger", "action"}
+            missing = sorted(field for field in required_fields if field not in config)
+            if missing:
+                return {
+                    "error": f"Missing required automation fields: {', '.join(missing)}"
+                }
+
             automations_path = os.path.join(hass.config.config_dir, "automations.yaml")
 
-            def _write_automation() -> None:
-                raw = pyyaml.dump([config], allow_unicode=True, sort_keys=False)
-                with open(automations_path, "a") as f:
-                    f.write("\n" + raw)
+            def _write_automation() -> str:
+                existing_text = ""
+                existing_items: list[dict[str, Any]] = []
+                if os.path.exists(automations_path):
+                    with open(automations_path, "r", encoding="utf-8") as f:
+                        existing_text = f.read()
+                    loaded = pyyaml.safe_load(existing_text) if existing_text.strip() else []
+                    if loaded is None:
+                        loaded = []
+                    if not isinstance(loaded, list):
+                        raise ValueError("automations.yaml must contain a list of automations")
+                    existing_items = loaded
 
-            await hass.async_add_executor_job(_write_automation)
+                updated = [*existing_items, config]
+                temp_path = f"{automations_path}.tmp"
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    pyyaml.dump(updated, f, allow_unicode=True, sort_keys=False)
+                os.replace(temp_path, automations_path)
+                return existing_text
 
-            await hass.services.async_call("automation", "reload", blocking=True)
+            previous_text = await hass.async_add_executor_job(_write_automation)
+            try:
+                await hass.services.async_call("automation", "reload", blocking=True)
+            except Exception:
+                def _restore() -> None:
+                    with open(automations_path, "w", encoding="utf-8") as f:
+                        f.write(previous_text)
+
+                await hass.async_add_executor_job(_restore)
+                raise
 
             return {
                 "success": True,
@@ -619,7 +724,7 @@ class AddAutomationTool(llm.Tool):
             return {"error": str(e)}
 
 
-class ModifyDashboardTool(llm.Tool):
+class ModifyDashboardTool(ClaudeAssistTool):
     """Tool to read/modify Lovelace dashboard config via official APIs."""
 
     name = "modify_dashboard"
@@ -661,10 +766,11 @@ class ModifyDashboardTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     def _get_lovelace_data(self, hass: HomeAssistant) -> Any:
         """Get the LovelaceData object from hass.data."""
@@ -695,13 +801,17 @@ class ModifyDashboardTool(llm.Tool):
         try:
             from homeassistant.components.lovelace.const import (
                 MODE_STORAGE,
-                MODE_YAML,
                 ConfigNotFound,
             )
 
             args = tool_input.tool_args
             action = args["action"]
             url_path = args.get("url_path")
+            write_actions = {"add_card", "remove_card", "add_view"}
+            if action in write_actions and not self._is_yolo_mode():
+                return {
+                    "error": "modify_dashboard write actions require yolo mode enabled for this agent"
+                }
 
             if action == "list":
                 ll_data = self._get_lovelace_data(hass)
@@ -797,7 +907,88 @@ class ModifyDashboardTool(llm.Tool):
             return {"error": str(e)}
 
 
-class SendNotificationTool(llm.Tool):
+class CallServiceTool(ClaudeAssistTool):
+    """Tool to call arbitrary Home Assistant services."""
+
+    name = "call_service"
+    description = (
+        "Call any Home Assistant service with JSON service_data. "
+        "This is powerful and potentially destructive; intended for YOLO mode only "
+        "(for advanced entity CRUD and helper management)."
+    )
+
+    parameters = vol.Schema(
+        {
+            vol.Required("domain", description="Service domain, e.g. 'input_boolean'"): str,
+            vol.Required("service", description="Service name, e.g. 'create'"): str,
+            vol.Optional(
+                "service_data",
+                description="Service data JSON object or plain object",
+            ): vol.Any(str, dict),
+            vol.Optional(
+                "return_response",
+                description="Whether to return the service response payload",
+            ): bool,
+        }
+    )
+
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
+        """Initialize."""
+        super().__init__(hass, entry, subentry_id)
+
+    async def async_call(
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
+    ) -> dict:
+        """Call a Home Assistant service."""
+        try:
+            if not self._is_yolo_mode():
+                return {"error": "call_service requires yolo mode enabled for this agent"}
+
+            args = tool_input.tool_args
+            domain = args["domain"]
+            service = args["service"]
+            service_data_input = args.get("service_data", {})
+            return_response = bool(args.get("return_response", False))
+
+            if isinstance(service_data_input, str):
+                try:
+                    service_data = json.loads(service_data_input)
+                except json.JSONDecodeError as err:
+                    return {"error": f"Invalid service_data JSON: {err}"}
+            else:
+                service_data = service_data_input
+
+            if not isinstance(service_data, dict):
+                return {"error": "service_data must be a JSON object"}
+
+            if not hass.services.has_service(domain, service):
+                return {"error": f"Service '{domain}.{service}' not found"}
+
+            response = await hass.services.async_call(
+                domain,
+                service,
+                service_data,
+                blocking=True,
+                return_response=return_response,
+            )
+            result: dict[str, Any] = {
+                "success": True,
+                "service": f"{domain}.{service}",
+            }
+            if return_response:
+                result["response"] = response
+            return result
+        except Exception as e:
+            LOGGER.error("call_service error: %s", e)
+            return {"error": str(e)}
+
+
+class SendNotificationTool(ClaudeAssistTool):
     """Tool to send notifications."""
 
     name = "send_notification"
@@ -823,10 +1014,11 @@ class SendNotificationTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -870,7 +1062,7 @@ class SendNotificationTool(llm.Tool):
             return {"error": str(e)}
 
 
-class GetErrorLogTool(llm.Tool):
+class GetErrorLogTool(ClaudeAssistTool):
     """Tool to get HA error log."""
 
     name = "get_error_log"
@@ -888,10 +1080,11 @@ class GetErrorLogTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -901,6 +1094,8 @@ class GetErrorLogTool(llm.Tool):
     ) -> dict:
         """Get error log."""
         try:
+            if not self._is_yolo_mode():
+                return {"error": "get_error_log requires yolo mode enabled for this agent"}
             lines = tool_input.tool_args.get("lines", 50)
             # Use hass.config.path() for safe, canonical log path
             log_path = hass.config.path("home-assistant.log")
@@ -920,7 +1115,7 @@ class GetErrorLogTool(llm.Tool):
             return {"error": str(e)}
 
 
-class WhoIsHomeTool(llm.Tool):
+class WhoIsHomeTool(ClaudeAssistTool):
     """Tool to check who is home."""
 
     name = "who_is_home"
@@ -931,10 +1126,11 @@ class WhoIsHomeTool(llm.Tool):
 
     parameters = vol.Schema({})
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -946,6 +1142,8 @@ class WhoIsHomeTool(llm.Tool):
         try:
             people = []
             for state in hass.states.async_all("person"):
+                if not self._is_entity_allowed(hass, state.entity_id):
+                    continue
                 people.append({
                     "entity_id": state.entity_id,
                     "name": state.attributes.get("friendly_name", state.entity_id),
@@ -956,7 +1154,7 @@ class WhoIsHomeTool(llm.Tool):
             # Also check device_trackers not linked to persons
             trackers = []
             for state in hass.states.async_all("device_tracker"):
-                if _should_expose(hass, state.entity_id):
+                if self._is_entity_allowed(hass, state.entity_id):
                     trackers.append({
                         "entity_id": state.entity_id,
                         "name": state.attributes.get("friendly_name", state.entity_id),
@@ -969,7 +1167,7 @@ class WhoIsHomeTool(llm.Tool):
             return {"error": str(e)}
 
 
-class ManageListTool(llm.Tool):
+class ManageListTool(ClaudeAssistTool):
     """Tool to manage shopping/todo lists."""
 
     name = "manage_list"
@@ -996,10 +1194,11 @@ class ManageListTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -1033,6 +1232,8 @@ class ManageListTool(llm.Tool):
             # Validate entity exists
             if not hass.states.get(entity_id):
                 return {"error": f"Entity {entity_id} not found"}
+            if not self._is_entity_allowed(hass, entity_id):
+                return {"error": f"Entity {entity_id} is not exposed"}
 
             if action == "add":
                 if not item:
@@ -1072,7 +1273,7 @@ class ManageListTool(llm.Tool):
             return {"error": str(e)}
 
 
-class GetCalendarEventsTool(llm.Tool):
+class GetCalendarEventsTool(ClaudeAssistTool):
     """Tool to get calendar events."""
 
     name = "get_calendar_events"
@@ -1094,10 +1295,11 @@ class GetCalendarEventsTool(llm.Tool):
         }
     )
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
         """Initialize."""
-        self._hass = hass
-        self._entry = entry
+        super().__init__(hass, entry, subentry_id)
 
     async def async_call(
         self,
@@ -1120,7 +1322,7 @@ class GetCalendarEventsTool(llm.Tool):
             if state is None:
                 return {"error": f"Calendar entity {entity_id} not found"}
 
-            if not _should_expose(hass, entity_id):
+            if not self._is_entity_allowed(hass, entity_id):
                 return {"error": f"Entity {entity_id} is not exposed"}
 
             now = dt_util.now()
@@ -1158,6 +1360,7 @@ CUSTOM_TOOL_FACTORIES: dict[str, tuple[str, type[llm.Tool]]] = {
     "toggle_automation": ("Toggle automation", ToggleAutomationTool),
     "add_automation": ("Add automation", AddAutomationTool),
     "modify_dashboard": ("Modify dashboard (Lovelace)", ModifyDashboardTool),
+    "call_service": ("Call service (YOLO)", CallServiceTool),
     "send_notification": ("Send notification", SendNotificationTool),
     "get_error_log": ("Get error log", GetErrorLogTool),
     "who_is_home": ("Who is home", WhoIsHomeTool),
@@ -1174,18 +1377,36 @@ def get_custom_tool_options() -> list[dict[str, str]]:
     ]
 
 
+def get_default_enabled_tools(yolo_mode: bool) -> list[str]:
+    """Return safe default enabled tool names for this mode."""
+    return default_enabled_tool_names(CUSTOM_TOOL_FACTORIES.keys(), yolo_mode)
+
+
+def normalize_enabled_tools(
+    enabled: list[str] | str | None, yolo_mode: bool
+) -> list[str]:
+    """Normalize and policy-filter enabled tool names."""
+    return normalize_enabled_tool_names(
+        enabled, CUSTOM_TOOL_FACTORIES.keys(), yolo_mode
+    )
+
+
 def get_custom_tools(
-    hass: HomeAssistant, entry: ConfigEntry, enabled: list[str] | None = None
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    enabled: list[str] | str | None = None,
+    subentry_id: str | None = None,
 ) -> list[llm.Tool]:
     """Get custom tools for the integration.
 
     If enabled is provided, only tools with names in enabled are returned.
     """
-    names = list(CUSTOM_TOOL_FACTORIES.keys()) if enabled is None else enabled
+    yolo_mode = _is_yolo_mode(entry, subentry_id)
+    names = normalize_enabled_tools(enabled, yolo_mode)
     tools: list[llm.Tool] = []
     for name in names:
         if name not in CUSTOM_TOOL_FACTORIES:
             continue
         _label, cls = CUSTOM_TOOL_FACTORIES[name]
-        tools.append(cls(hass, entry))
+        tools.append(cls(hass, entry, subentry_id=subentry_id))
     return tools

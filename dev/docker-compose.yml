@@ -1,0 +1,14 @@
+services:
+  homeassistant:
+    # Use Docker Hub to avoid GHCR auth/deny issues in some environments.
+    image: homeassistant/home-assistant:2026.2.2
+    container_name: claude-assist-ha
+    ports:
+      - "8123:8123"
+    environment:
+      - TZ=America/Los_Angeles
+    volumes:
+      - ./ha_config:/config
+      # Mount the integration from the repo into HA's config dir.
+      - ../custom_components/claude_assist:/config/custom_components/claude_assist
+    restart: unless-stopped
