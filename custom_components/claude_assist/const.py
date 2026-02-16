@@ -50,7 +50,7 @@ GOOGLE_GEMINI_CLI_OAUTH_CLIENT_ID = (
     "681255809395-oo8ft2oprd"
     "rnp9e3aqf6av3hmdib135j.apps.googleusercontent.com"
 )
-GOOGLE_GEMINI_CLI_OAUTH_CLIENT_SECRET = "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"
+GOOGLE_GEMINI_CLI_OAUTH_CLIENT_SECRET = "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"
 GOOGLE_GEMINI_CLI_OAUTH_REDIRECT_URI = "http://localhost:8085/oauth2callback"
 GOOGLE_GEMINI_CLI_OAUTH_SCOPES = (
     "https://www.googleapis.com/auth/cloud-platform "

@@ -822,11 +822,13 @@ class ClaudeAssistBaseLLMEntity(Entity):
         self.subentry = subentry
         self._attr_unique_id = subentry.subentry_id
         provider = str(entry.data.get(CONF_PROVIDER, PROVIDER_CLAUDE_OAUTH))
-        manufacturer = "Anthropic"
-        if provider in (PROVIDER_OPENAI, PROVIDER_OPENAI_CODEX):
-            manufacturer = "OpenAI"
+        manufacturer = "Claude"
+        if provider == PROVIDER_OPENAI:
+            manufacturer = "OpenAI API"
+        elif provider == PROVIDER_OPENAI_CODEX:
+            manufacturer = "ChatGPT"
         elif provider == PROVIDER_GOOGLE_GEMINI_CLI:
-            manufacturer = "Google"
+            manufacturer = "Gemini"
         self._attr_device_info = dr.DeviceInfo(
             identifiers={(DOMAIN, subentry.subentry_id)},
             name=subentry.title,

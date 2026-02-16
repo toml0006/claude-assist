@@ -1,9 +1,9 @@
 # ai-subscription-assist
 
 Use subscription-backed LLMs (OAuth) as **Home Assistant Assist conversation agents**:
-- **Claude subscription** (Pro/Max) via **OAuth** (no Anthropic API key required)
-- **OpenAI Codex** (ChatGPT subscription) via **OAuth**
-- **Google Gemini CLI** (Cloud Code Assist subscription) via **OAuth**
+- **Claude Pro** / **Claude Max** via **OAuth** (no Anthropic API key required)
+- **ChatGPT Plus/Pro/Business/Enterprise** (Codex) via **OAuth**
+- **Google AI Pro** via **OAuth** (includes Gemini Code Assist and Gemini CLI)
 - **OpenAI / compatible** via **API key** (metered)
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
@@ -24,12 +24,12 @@ For subscription users, it authenticates using OAuth flows compatible with popul
 
 - **Requires Home Assistant 2026.2.2+** (Python 3.13+)
 - **Multi-provider**:
-  - Claude subscription OAuth
-  - OpenAI Codex (ChatGPT OAuth subscription)
-  - Google Gemini CLI (OAuth subscription)
+  - Claude Pro/Max OAuth
+  - ChatGPT Plus/Pro/Business/Enterprise (Codex OAuth)
+  - Google AI Pro (Gemini OAuth)
   - OpenAI / compatible API keys
 - **Multiple entries supported**: set up more than one provider/account
-- **Subscription OAuth auth** (PKCE) — no API key required for Claude/Codex/Gemini
+- **Subscription OAuth auth** (PKCE) — no API key required for Claude/Codex/Google AI Pro
 - **Automatic token refresh** (access tokens expire ~8 hours)
 - **Assist pipeline compatible** (works like a normal HA conversation agent)
 - **Per-agent model selection** in the UI (one provider per config entry; multiple agents per entry)
@@ -95,9 +95,9 @@ Repeat this once per provider/account you want (multiple config entries are supp
 1. HA → **Settings → Devices & services → Add integration**
 2. Search for **AI Subscription Assist**
 3. Choose the provider:
-   - **Claude subscription (OAuth)**: follow the OAuth instructions (you’ll be sent to a Claude/Anthropic page)
-   - **OpenAI Codex (ChatGPT OAuth subscription)**: follow the OAuth instructions (you’ll be sent to an OpenAI page)
-   - **Google Gemini CLI (OAuth subscription)**: follow the OAuth instructions (you’ll be sent to a Google page)
+   - **Claude Pro/Max (OAuth subscription)**: follow the OAuth instructions (you’ll be sent to a Claude page)
+   - **ChatGPT Plus/Pro (Codex) (OAuth subscription)**: follow the OAuth instructions (you’ll be sent to an OpenAI page)
+   - **Google AI Pro (OAuth subscription)**: follow the OAuth instructions (you’ll be sent to a Google page)
    - **OpenAI / compatible (API key)**: enter your API key and optional base URL
 4. Finish setup
 
@@ -108,7 +108,7 @@ After setup you’ll have a **conversation agent** sub-entry (and you can create
 - The OAuth redirect is usually to a `http://localhost:...` URL which may not load in your browser. That’s expected.
 - Copy/paste the full redirect URL into Home Assistant (or for Codex you can paste just the `code=` value).
 - If you hit **OAuth state mismatch**, just restart the config flow and try again.
-- For **Gemini CLI**, some accounts require a Google Cloud project ID. If you see the “project required” error, provide a project ID and re-authenticate.
+- For **Google AI Pro**, some accounts require a Google Cloud project ID for Gemini Code Assist. If you see the “project required” error, provide a project ID and re-authenticate.
 
 ### Add more agents (different model/tools) under the same provider
 
@@ -160,7 +160,7 @@ Note: multi-turn “session” behavior depends on whether your caller reuses `c
 ## FAQ
 
 ### Does this use my subscription instead of API billing?
-Yes, for the OAuth-backed providers (Claude subscription, OpenAI Codex, Gemini CLI). No API key needed for those.
+Yes, for the OAuth-backed providers (Claude Pro/Max, ChatGPT Plus/Pro/Business/Enterprise via Codex, Google AI Pro). No API key needed for those.
 
 For **OpenAI / compatible (API key)** it uses normal API billing.
 
