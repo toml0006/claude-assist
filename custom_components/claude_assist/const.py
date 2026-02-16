@@ -79,7 +79,29 @@ CONF_WEB_SEARCH_TIMEZONE = "timezone"
 CONF_ENABLED_TOOLS = "enabled_tools"
 CONF_YOLO_MODE = "yolo_mode"
 
+# Service-level memory options (config entry options)
+CONF_MEMORY_ENABLED = "memory_enabled"
+CONF_MEMORY_AUTO_WRITE = "memory_auto_write"
+CONF_MEMORY_AUTO_RECALL = "memory_auto_recall"
+CONF_MEMORY_TTL_DAYS = "memory_ttl_days"
+CONF_MEMORY_MAX_ITEMS_PER_SCOPE = "memory_max_items_per_scope"
+CONF_MEMORY_RECALL_TOP_K = "memory_recall_top_k"
+CONF_MEMORY_RESUME_ENABLED = "memory_resume_enabled"
+CONF_MEMORY_RESUME_MAX_MESSAGES = "memory_resume_max_messages"
+
+MEMORY_DEFAULTS = {
+    CONF_MEMORY_ENABLED: False,
+    CONF_MEMORY_AUTO_WRITE: True,
+    CONF_MEMORY_AUTO_RECALL: True,
+    CONF_MEMORY_TTL_DAYS: 180,
+    CONF_MEMORY_MAX_ITEMS_PER_SCOPE: 300,
+    CONF_MEMORY_RECALL_TOP_K: 5,
+    CONF_MEMORY_RESUME_ENABLED: True,
+    CONF_MEMORY_RESUME_MAX_MESSAGES: 40,
+}
+
 DATA_REPAIR_DEFER_RELOAD = "repair_defer_reload"
+DATA_MEMORY_SERVICES = "memory_services"
 
 DEFAULT = {
     CONF_CHAT_MODEL: "claude-haiku-4-5",

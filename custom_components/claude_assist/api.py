@@ -53,6 +53,10 @@ class ClaudeAssistSubentryAPI(llm.API):
         # Extend Assist prompt so the model knows these tools exist.
         tool_names = {t.name for t in custom_tools}
         extra_lines: list[str] = []
+        if "internet_lookup" in tool_names:
+            extra_lines.append(
+                "- Use `internet_lookup` for read-only web search/fetch when you need up-to-date external information."
+            )
         if "get_history" in tool_names:
             extra_lines.append(
                 "- Use `get_history` to answer questions about *when* something turned on/off or how long it has been in a state."
@@ -63,6 +67,12 @@ class ClaudeAssistSubentryAPI(llm.API):
             extra_lines.append("- Use `get_statistics` for aggregated sensor/energy data over time.")
         if "render_template" in tool_names:
             extra_lines.append("- Use `render_template` to compute answers with Jinja templates.")
+        if "modify_dashboard" in tool_names:
+            extra_lines.append(
+                "- For `modify_dashboard`, always inspect first with `list`/`get`. "
+                "Prefer editing existing views via `add_card`/`remove_card`, and only use "
+                "`add_view`/`remove_view` when the user explicitly asks to create/delete a view or tab."
+            )
         if extra_lines:
             api_prompt = assist.api_prompt + "\n\nYou ALSO have access to these extra tools:\n" + "\n".join(extra_lines) + "\n"
         else:

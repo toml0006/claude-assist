@@ -38,6 +38,7 @@ For subscription users, it authenticates using OAuth flows compatible with popul
   - Logbook (`get_logbook`)
   - Statistics (`get_statistics`)
   - Template rendering (`render_template`)
+  - Internet lookup, read-only (`internet_lookup`)
   - Automations (`list_automations`, `toggle_automation`, `add_automation`)
   - Dashboards (experimental) (`modify_dashboard`)
   - Generic HA service calls (YOLO) (`call_service`)
@@ -47,6 +48,10 @@ For subscription users, it authenticates using OAuth flows compatible with popul
   - Calendar (`get_calendar_events`)
 - **Per-agent tool allowlist**: choose exactly which *extra* tools each configured agent can use
 - **Per-agent YOLO mode**: explicit opt-in to bypass exposure filtering and enable privileged tools
+- **Service-level memory (opt-in)**:
+  - shared + per-user memory scopes
+  - slash commands (`/memory`, `/remember`, `/forget`, `/memories`)
+  - resumable conversation context across Assist dialog reopen
 
 ---
 
@@ -67,6 +72,9 @@ Response spoken/displayed by Home Assistant
 ---
 
 ## Getting started
+
+Need a guided walkthrough with screenshot placeholders? See:
+- [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md)
 
 ### Install
 
@@ -173,6 +181,9 @@ Functionally similar on the HA side (conversation agent), but authentication dif
 ### Why can’t Claude answer “when did X change” by default?
 Standard Assist tools are focused on live state + control. For history/logbook/statistics you must enable the extra tools for that agent.
 
+### Can I close Assist and continue later?
+Yes, when service-level memory is enabled with resume context. Use `/new` (or `/reset`) to clear current context and start fresh.
+
 ---
 
 ## Documentation
@@ -184,8 +195,29 @@ By default, extra tools are filtered by Home Assistant’s entity exposure setti
 If you enable **YOLO mode** on an agent, it:
 - bypasses entity exposure filtering
 - unlocks privileged tools (service calls, automation/dashboard edits, log access)
+- still keeps destructive dashboard structure changes (`add_view` / `remove_view`) behind an explicit intent gate
 
 Enable YOLO mode only for trusted agents.
+
+### Memory and slash commands
+
+Memory is configured at the **service entry** level (Integration → Configure), not per agent.
+
+Commands:
+- `/memory status`
+- `/memory add [--shared] <text>`
+- `/memory list [mine|shared|all] [--limit N]`
+- `/memory search <query> [--limit N]`
+- `/memory delete <memory_id>`
+- `/memory clear mine|shared|all --confirm`
+- aliases: `/remember`, `/forget`, `/memories`
+- context reset: `/new` or `/reset`
+
+Notes:
+- Default writes are per-user memory.
+- Shared memory writes/deletes/clear require an admin user.
+- Memory avoids obvious secret-looking text and applies retention/cap limits.
+- Semantic recall uses local embeddings when available; otherwise it falls back to lexical matching automatically.
 
 ## Development notes (auth details)
 
@@ -198,7 +230,7 @@ This integration works by mimicking Claude Code’s OAuth + request headers.
 
 ## Roadmap
 
-- **Per-agent memory**: persistent memory/summaries per configured agent (opt-in), so agents can remember preferences and context across sessions.
+- Richer memory UX (memory tagging, confidence, and user controls in the UI).
 - More provider backends and better UX around provider auth flows.
 
 ## Contributing

@@ -48,6 +48,10 @@ from .const import (
     PROVIDER_GOOGLE_GEMINI_CLI,
     TOKEN_REFRESH_INTERVAL,
 )
+from .memory_service import (
+    async_remove_memory_service_for_entry,
+    async_setup_memory_service_for_entry,
+)
 
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -606,6 +610,8 @@ async def async_setup_entry(
             )
         )
 
+    await async_setup_memory_service_for_entry(hass, entry)
+
     # Register per-agent LLM APIs (one per conversation subentry)
     from .api import async_register_claude_assist_apis
 
@@ -621,7 +627,9 @@ async def async_setup_entry(
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload AI Subscription Assist."""
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    async_remove_memory_service_for_entry(hass, entry.entry_id)
+    return unloaded
 
 
 async def async_update_options(

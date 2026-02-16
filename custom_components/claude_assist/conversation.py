@@ -11,6 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import ClaudeAssistConfigEntry
 from .const import CONF_PROMPT, DOMAIN
 from .entity import ClaudeAssistBaseLLMEntity
+from .memory_service import get_memory_service
 
 
 async def async_setup_entry(
@@ -58,17 +59,56 @@ class ClaudeAssistConversationEntity(
     ) -> conversation.ConversationResult:
         """Call the API."""
         options = self.subentry.data
+        memory_service = get_memory_service(self.hass, self.entry.entry_id)
+        extra_system_prompt = user_input.extra_system_prompt
+
+        if memory_service is not None:
+            handled, command_response = await memory_service.async_handle_command(
+                user_input,
+                self.subentry.subentry_id,
+            )
+            if handled:
+                chat_log.async_add_assistant_content_without_tools(
+                    conversation.AssistantContent(
+                        agent_id=self.entity_id,
+                        content=command_response,
+                    )
+                )
+                return conversation.async_get_result_from_chat_log(user_input, chat_log)
+
+            await memory_service.async_inject_resume_context(
+                chat_log,
+                user_input,
+                self.subentry.subentry_id,
+                self.entity_id,
+            )
+            await memory_service.async_maybe_capture_heuristic(user_input)
+            memory_prompt = await memory_service.async_build_memory_prompt(user_input)
+            if memory_prompt:
+                extra_system_prompt = "\n\n".join(
+                    part for part in (extra_system_prompt, memory_prompt) if part
+                )
 
         try:
             await chat_log.async_provide_llm_data(
                 user_input.as_llm_context(DOMAIN),
                 options.get(CONF_LLM_HASS_API),
                 options.get(CONF_PROMPT),
-                user_input.extra_system_prompt,
+                extra_system_prompt,
             )
         except conversation.ConverseError as err:
             return err.as_conversation_result()
 
         await self._async_handle_chat_log(chat_log)
 
-        return conversation.async_get_result_from_chat_log(user_input, chat_log)
+        result = conversation.async_get_result_from_chat_log(user_input, chat_log)
+        if memory_service is not None:
+            assistant_text = None
+            if chat_log.content and isinstance(chat_log.content[-1], conversation.AssistantContent):
+                assistant_text = chat_log.content[-1].content
+            await memory_service.async_record_turn(
+                user_input,
+                self.subentry.subentry_id,
+                assistant_text,
+            )
+        return result

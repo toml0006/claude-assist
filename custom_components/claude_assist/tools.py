@@ -10,9 +10,17 @@ import voluptuous as vol
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.httpx_client import get_async_client
 from homeassistant.helpers import llm
 
 from .const import CONF_CHAT_MODEL, CONF_YOLO_MODE, LOGGER
+from .dashboard_safety import validate_view_change_request
+from .internet_lookup import (
+    collapse_whitespace,
+    extract_page_text,
+    parse_bing_rss,
+    validate_public_http_url,
+)
 from .tool_policy import (
     default_enabled_tool_names,
     normalize_enabled_tool_names,
@@ -419,6 +427,149 @@ class RenderTemplateTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
+class InternetLookupTool(ClaudeAssistTool):
+    """Tool to search/fetch public internet content in read-only mode."""
+
+    name = "internet_lookup"
+    description = (
+        "Read-only internet lookup. "
+        "Use action 'search' to find public web results for a query, "
+        "or action 'fetch' to read a specific public URL. "
+        "This tool cannot write or execute anything."
+    )
+
+    parameters = vol.Schema(
+        {
+            vol.Required(
+                "action",
+                description="Action: search or fetch",
+            ): vol.In(["search", "fetch"]),
+            vol.Optional(
+                "query",
+                description="Search query (required for search action)",
+            ): str,
+            vol.Optional(
+                "url",
+                description="Public http/https URL to fetch (required for fetch action)",
+            ): str,
+            vol.Optional(
+                "limit",
+                description="Maximum number of search results (1-10, default: 5)",
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=10)),
+            vol.Optional(
+                "max_chars",
+                description="Maximum characters of fetched page text (500-20000, default: 6000)",
+            ): vol.All(vol.Coerce(int), vol.Range(min=500, max=20000)),
+        }
+    )
+
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, subentry_id: str | None = None
+    ) -> None:
+        """Initialize."""
+        super().__init__(hass, entry, subentry_id)
+
+    async def async_call(
+        self,
+        hass: HomeAssistant,
+        tool_input: llm.ToolInput,
+        llm_context: llm.LLMContext,
+    ) -> dict:
+        """Search/fetch internet content."""
+        try:
+            args = tool_input.tool_args
+            action = args["action"]
+            client = get_async_client(hass)
+            headers = {
+                "User-Agent": "ai-subscription-assist/1.0",
+                "Accept": "text/html,application/xhtml+xml,text/plain,application/json,application/xml;q=0.9,*/*;q=0.1",
+            }
+
+            if action == "search":
+                query = str(args.get("query", "")).strip()
+                if not query:
+                    return {"error": "query is required for search"}
+                limit = int(args.get("limit", 5))
+                # Keep queries bounded and deterministic.
+                query = query[:256]
+
+                resp = await client.get(
+                    "https://www.bing.com/search",
+                    params={"q": query, "format": "rss"},
+                    headers=headers,
+                    timeout=15.0,
+                )
+                resp.raise_for_status()
+                results = parse_bing_rss(resp.text, limit=limit)
+                return {
+                    "query": query,
+                    "source": "bing_rss",
+                    "result_count": len(results),
+                    "results": results,
+                }
+
+            if action == "fetch":
+                url = str(args.get("url", "")).strip()
+                if not url:
+                    return {"error": "url is required for fetch"}
+                max_chars = int(args.get("max_chars", 6000))
+                url_error = validate_public_http_url(url)
+                if url_error:
+                    return {"error": url_error}
+
+                resp = await client.get(
+                    url,
+                    headers=headers,
+                    follow_redirects=True,
+                    timeout=20.0,
+                )
+                resp.raise_for_status()
+
+                final_url = str(resp.url)
+                final_url_error = validate_public_http_url(final_url)
+                if final_url_error:
+                    return {"error": f"Redirect target rejected: {final_url_error}"}
+
+                content_type = str(resp.headers.get("content-type", "")).lower()
+                if "text/html" in content_type or "application/xhtml+xml" in content_type:
+                    page = extract_page_text(resp.text, max_chars=max_chars)
+                    return {
+                        "url": url,
+                        "final_url": final_url,
+                        "content_type": content_type,
+                        "title": page["title"],
+                        "content": page["text"],
+                        "truncated": page["truncated"],
+                        "total_chars": page["total_chars"],
+                    }
+
+                if "json" in content_type or content_type.startswith("text/") or not content_type:
+                    text = resp.text if "json" in content_type else collapse_whitespace(resp.text)
+                    truncated = len(text) > max_chars
+                    return {
+                        "url": url,
+                        "final_url": final_url,
+                        "content_type": content_type,
+                        "content": text[:max_chars],
+                        "truncated": truncated,
+                        "total_chars": len(text),
+                    }
+
+                return {
+                    "error": (
+                        "Unsupported content type for fetch. "
+                        "Only text/html, text/*, and json responses are supported."
+                    ),
+                    "content_type": content_type,
+                    "url": final_url,
+                }
+
+            return {"error": f"Unknown action: {action}"}
+        except Exception as e:
+            LOGGER.error("internet_lookup error: %s", e)
+            return {"error": str(e)}
+
+
 class GetStatisticsTool(ClaudeAssistTool):
     """Tool to get recorder statistics."""
 
@@ -731,8 +882,11 @@ class ModifyDashboardTool(ClaudeAssistTool):
     description = (
         "Read or modify a Lovelace dashboard configuration. "
         "Actions: 'list' to list all dashboards, 'get' to read current config, "
-        "'add_card' to add a card to a view, "
-        "'remove_card' to remove a card, 'add_view' to add a new view. "
+        "'add_card' to add a card to an existing view (or section), "
+        "'remove_card' to remove a card from a view/section, "
+        "'add_view' to add a new view (requires explicit confirm), "
+        "'remove_view' to delete an existing view (requires explicit confirm). "
+        "Prefer editing existing views first; call 'get' before write actions. "
         "Only storage-mode dashboards can be modified; YAML-mode dashboards are read-only."
     )
 
@@ -740,8 +894,8 @@ class ModifyDashboardTool(ClaudeAssistTool):
         {
             vol.Required(
                 "action",
-                description="Action: list, get, add_card, remove_card, add_view",
-            ): vol.In(["list", "get", "add_card", "remove_card", "add_view"]),
+                description="Action: list, get, add_card, remove_card, add_view, remove_view",
+            ): vol.In(["list", "get", "add_card", "remove_card", "add_view", "remove_view"]),
             vol.Optional(
                 "url_path",
                 description="Dashboard url_path (default: None for the default dashboard). "
@@ -749,8 +903,20 @@ class ModifyDashboardTool(ClaudeAssistTool):
             ): vol.Any(str, None),
             vol.Optional(
                 "view_index",
-                description="View index (0-based) for card operations",
+                description="View index (0-based) for operations. Prefer this or view_title.",
             ): int,
+            vol.Optional(
+                "view_title",
+                description="View title (case-insensitive) to target. Used when view_index is omitted.",
+            ): str,
+            vol.Optional(
+                "section_index",
+                description="Section index (0-based) for section-based dashboards.",
+            ): int,
+            vol.Optional(
+                "section_title",
+                description="Section title (case-insensitive) for section-based dashboards.",
+            ): str,
             vol.Optional(
                 "card_config",
                 description="JSON string of the card configuration to add",
@@ -762,6 +928,17 @@ class ModifyDashboardTool(ClaudeAssistTool):
             vol.Optional(
                 "view_config",
                 description="JSON string of the view configuration to add",
+            ): str,
+            vol.Optional(
+                "confirm",
+                description="Required for add_view/remove_view to prevent accidental structure changes.",
+            ): bool,
+            vol.Optional(
+                "user_request",
+                description=(
+                    "Required for add_view/remove_view. Quote the user's explicit "
+                    "request to create/delete a view or tab."
+                ),
             ): str,
         }
     )
@@ -791,6 +968,122 @@ class ModifyDashboardTool(ClaudeAssistTool):
             return dashboards.get("lovelace") or dashboards.get(None)
         return dashboards.get(url_path)
 
+    def _summarize_views(self, config: dict[str, Any]) -> list[dict[str, Any]]:
+        """Return compact view metadata for LLM guidance."""
+        views = config.get("views", [])
+        if not isinstance(views, list):
+            return []
+        summary: list[dict[str, Any]] = []
+        for idx, view in enumerate(views):
+            if not isinstance(view, dict):
+                continue
+            cards = view.get("cards", [])
+            sections = view.get("sections", [])
+            section_summary: list[dict[str, Any]] = []
+            if isinstance(sections, list):
+                for s_idx, section in enumerate(sections):
+                    if not isinstance(section, dict):
+                        continue
+                    s_cards = section.get("cards", [])
+                    section_summary.append(
+                        {
+                            "index": s_idx,
+                            "title": section.get("title", ""),
+                            "card_count": len(s_cards) if isinstance(s_cards, list) else 0,
+                        }
+                    )
+            summary.append(
+                {
+                    "index": idx,
+                    "title": view.get("title", f"View {idx + 1}"),
+                    "path": view.get("path", ""),
+                    "card_count": len(cards) if isinstance(cards, list) else 0,
+                    "section_count": len(sections) if isinstance(sections, list) else 0,
+                    "sections": section_summary,
+                }
+            )
+        return summary
+
+    def _resolve_view_index(
+        self, views: list[Any], args: dict[str, Any]
+    ) -> tuple[int | None, str | None]:
+        """Resolve target view index using index or title."""
+        if not views:
+            return None, "Dashboard has no views"
+
+        if isinstance(args.get("view_index"), int):
+            view_index = args["view_index"]
+            if view_index < 0 or view_index >= len(views):
+                return None, f"View index {view_index} out of range (have {len(views)} views)"
+            return view_index, None
+
+        view_title = args.get("view_title")
+        if isinstance(view_title, str) and view_title.strip():
+            needle = view_title.strip().lower()
+            for idx, view in enumerate(views):
+                if not isinstance(view, dict):
+                    continue
+                title = str(view.get("title", "")).strip().lower()
+                if title == needle:
+                    return idx, None
+            return None, f"View title '{view_title}' not found"
+
+        return 0, None
+
+    def _resolve_section_index(
+        self, view: dict[str, Any], args: dict[str, Any]
+    ) -> tuple[int | None, str | None]:
+        """Resolve section index for a section-based view."""
+        sections = view.get("sections", [])
+        if not isinstance(sections, list) or not sections:
+            return None, "View has no sections"
+
+        if isinstance(args.get("section_index"), int):
+            section_index = args["section_index"]
+            if section_index < 0 or section_index >= len(sections):
+                return None, (
+                    f"Section index {section_index} out of range "
+                    f"(have {len(sections)} sections)"
+                )
+            return section_index, None
+
+        section_title = args.get("section_title")
+        if isinstance(section_title, str) and section_title.strip():
+            needle = section_title.strip().lower()
+            for idx, section in enumerate(sections):
+                if not isinstance(section, dict):
+                    continue
+                title = str(section.get("title", "")).strip().lower()
+                if title == needle:
+                    return idx, None
+            return None, f"Section title '{section_title}' not found"
+
+        return 0, None
+
+    def _extract_user_request_text(self, llm_context: llm.LLMContext) -> str:
+        """Best-effort extraction of user-authored text from llm context."""
+        fields = ("user_prompt", "prompt", "input", "text", "query")
+        parts: list[str] = []
+
+        def _append(value: Any) -> None:
+            if isinstance(value, str):
+                text = value.strip()
+                if text and text not in parts:
+                    parts.append(text)
+
+        for field in fields:
+            _append(getattr(llm_context, field, None))
+
+        context_obj = getattr(llm_context, "context", None)
+        if isinstance(context_obj, dict):
+            for field in fields:
+                _append(context_obj.get(field))
+        elif context_obj is not None:
+            for field in fields:
+                _append(getattr(context_obj, field, None))
+
+        return "\n".join(parts)
+
     async def async_call(
         self,
         hass: HomeAssistant,
@@ -807,7 +1100,7 @@ class ModifyDashboardTool(ClaudeAssistTool):
             args = tool_input.tool_args
             action = args["action"]
             url_path = args.get("url_path")
-            write_actions = {"add_card", "remove_card", "add_view"}
+            write_actions = {"add_card", "remove_card", "add_view", "remove_view"}
             if action in write_actions and not self._is_yolo_mode():
                 return {
                     "error": "modify_dashboard write actions require yolo mode enabled for this agent"
@@ -838,7 +1131,11 @@ class ModifyDashboardTool(ClaudeAssistTool):
                     config = await dashboard.async_load(False)
                 except ConfigNotFound:
                     return {"result": None, "note": "No config found (auto-generated dashboard)"}
-                return {"result": config, "mode": dashboard.mode}
+                return {
+                    "result": config,
+                    "mode": dashboard.mode,
+                    "views": self._summarize_views(config),
+                }
 
             # Write operations require storage mode
             if dashboard.mode != MODE_STORAGE:
@@ -853,42 +1150,132 @@ class ModifyDashboardTool(ClaudeAssistTool):
                 config = {"views": []}
 
             if action == "add_card":
-                view_index = args.get("view_index", 0)
                 card_config_str = args.get("card_config")
                 if not card_config_str:
                     return {"error": "card_config is required"}
 
                 card = json.loads(card_config_str)
                 views = config.get("views", [])
-                if view_index >= len(views):
-                    return {"error": f"View index {view_index} out of range (have {len(views)} views)"}
+                if not isinstance(views, list):
+                    return {"error": "Dashboard views format is invalid"}
+                view_index, view_error = self._resolve_view_index(views, args)
+                if view_error:
+                    return {"error": view_error, "views": self._summarize_views(config)}
+                assert view_index is not None
+                view = views[view_index]
+                if not isinstance(view, dict):
+                    return {"error": f"View at index {view_index} is invalid"}
 
-                if "cards" not in views[view_index]:
-                    views[view_index]["cards"] = []
-                views[view_index]["cards"].append(card)
+                if isinstance(view.get("sections"), list) and view["sections"]:
+                    section_index, section_error = self._resolve_section_index(view, args)
+                    if section_error:
+                        return {
+                            "error": section_error,
+                            "views": self._summarize_views(config),
+                        }
+                    assert section_index is not None
+                    section = view["sections"][section_index]
+                    if not isinstance(section, dict):
+                        return {"error": f"Section at index {section_index} is invalid"}
+                    if "cards" not in section or not isinstance(section.get("cards"), list):
+                        section["cards"] = []
+                    section["cards"].append(card)
+                    target: dict[str, Any] = {
+                        "view_index": view_index,
+                        "section_index": section_index,
+                    }
+                else:
+                    if "cards" not in view or not isinstance(view.get("cards"), list):
+                        view["cards"] = []
+                    view["cards"].append(card)
+                    target = {"view_index": view_index}
 
                 await dashboard.async_save(config)
-                return {"success": True, "action": "card_added", "view_index": view_index}
+                return {
+                    "success": True,
+                    "action": "card_added",
+                    **target,
+                    "views": self._summarize_views(config),
+                }
 
             elif action == "remove_card":
-                view_index = args.get("view_index", 0)
                 card_index = args.get("card_index")
                 if card_index is None:
                     return {"error": "card_index is required"}
 
                 views = config.get("views", [])
-                if view_index >= len(views):
-                    return {"error": f"View index {view_index} out of range (have {len(views)} views)"}
+                if not isinstance(views, list):
+                    return {"error": "Dashboard views format is invalid"}
+                view_index, view_error = self._resolve_view_index(views, args)
+                if view_error:
+                    return {"error": view_error, "views": self._summarize_views(config)}
+                assert view_index is not None
+                view = views[view_index]
+                if not isinstance(view, dict):
+                    return {"error": f"View at index {view_index} is invalid"}
 
-                cards = views[view_index].get("cards", [])
-                if card_index >= len(cards):
-                    return {"error": f"Card index {card_index} out of range (have {len(cards)} cards)"}
+                if isinstance(view.get("sections"), list) and view["sections"]:
+                    section_index, section_error = self._resolve_section_index(view, args)
+                    if section_error:
+                        return {
+                            "error": section_error,
+                            "views": self._summarize_views(config),
+                        }
+                    assert section_index is not None
+                    section = view["sections"][section_index]
+                    if not isinstance(section, dict):
+                        return {"error": f"Section at index {section_index} is invalid"}
+                    cards = section.get("cards", [])
+                    if not isinstance(cards, list):
+                        return {"error": f"Section {section_index} has no cards list"}
+                    if card_index < 0 or card_index >= len(cards):
+                        return {
+                            "error": (
+                                f"Card index {card_index} out of range "
+                                f"(have {len(cards)} cards in section {section_index})"
+                            )
+                        }
+                    removed = cards.pop(card_index)
+                    target = {"view_index": view_index, "section_index": section_index}
+                else:
+                    cards = view.get("cards", [])
+                    if not isinstance(cards, list):
+                        return {"error": f"View {view_index} has no cards list"}
+                    if card_index < 0 or card_index >= len(cards):
+                        return {
+                            "error": (
+                                f"Card index {card_index} out of range "
+                                f"(have {len(cards)} cards)"
+                            )
+                        }
+                    removed = cards.pop(card_index)
+                    target = {"view_index": view_index}
 
-                removed = cards.pop(card_index)
                 await dashboard.async_save(config)
-                return {"success": True, "removed_card": removed}
+                return {
+                    "success": True,
+                    "action": "card_removed",
+                    **target,
+                    "removed_card": removed,
+                    "views": self._summarize_views(config),
+                }
 
             elif action == "add_view":
+                if not bool(args.get("confirm", False)):
+                    return {
+                        "error": (
+                            "add_view is blocked unless confirm=true. "
+                            "Only add a view when the user explicitly asks for a new view."
+                        ),
+                        "views": self._summarize_views(config),
+                    }
+                intent_error = validate_view_change_request(
+                    action="add_view",
+                    user_request=args.get("user_request"),
+                    context_text=self._extract_user_request_text(llm_context),
+                )
+                if intent_error:
+                    return {"error": intent_error, "views": self._summarize_views(config)}
                 view_config_str = args.get("view_config")
                 if not view_config_str:
                     return {"error": "view_config is required"}
@@ -899,7 +1286,45 @@ class ModifyDashboardTool(ClaudeAssistTool):
                 config["views"].append(view)
 
                 await dashboard.async_save(config)
-                return {"success": True, "action": "view_added", "view_count": len(config["views"])}
+                return {
+                    "success": True,
+                    "action": "view_added",
+                    "view_count": len(config["views"]),
+                    "views": self._summarize_views(config),
+                }
+
+            elif action == "remove_view":
+                if not bool(args.get("confirm", False)):
+                    return {
+                        "error": (
+                            "remove_view is blocked unless confirm=true."
+                        ),
+                        "views": self._summarize_views(config),
+                    }
+                intent_error = validate_view_change_request(
+                    action="remove_view",
+                    user_request=args.get("user_request"),
+                    context_text=self._extract_user_request_text(llm_context),
+                )
+                if intent_error:
+                    return {"error": intent_error, "views": self._summarize_views(config)}
+                views = config.get("views", [])
+                if not isinstance(views, list):
+                    return {"error": "Dashboard views format is invalid"}
+                view_index, view_error = self._resolve_view_index(views, args)
+                if view_error:
+                    return {"error": view_error, "views": self._summarize_views(config)}
+                assert view_index is not None
+                removed_view = views.pop(view_index)
+                await dashboard.async_save(config)
+                return {
+                    "success": True,
+                    "action": "view_removed",
+                    "view_index": view_index,
+                    "removed_view": removed_view,
+                    "view_count": len(views),
+                    "views": self._summarize_views(config),
+                }
 
             return {"error": f"Unknown action: {action}"}
         except Exception as e:
@@ -1352,6 +1777,7 @@ class GetCalendarEventsTool(ClaudeAssistTool):
 CUSTOM_TOOL_FACTORIES: dict[str, tuple[str, type[llm.Tool]]] = {
     # tool_name: (label, class)
     "set_model": ("Set model", SetModelTool),
+    "internet_lookup": ("Internet lookup (read-only)", InternetLookupTool),
     "get_history": ("Get history (recorder)", GetHistoryTool),
     "get_logbook": ("Get logbook", GetLogbookTool),
     "render_template": ("Render template", RenderTemplateTool),

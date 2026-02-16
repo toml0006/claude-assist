@@ -25,6 +25,7 @@ from homeassistant.config_entries import (
     ConfigFlow,
     ConfigFlowResult,
     ConfigSubentryFlow,
+    OptionsFlow,
     SubentryFlowResult,
 )
 from homeassistant.const import (
@@ -55,6 +56,14 @@ from .const import (
     CONF_GOOGLE_PROJECT_ID,
     CONF_GOOGLE_USER_EMAIL,
     CONF_MAX_TOKENS,
+    CONF_MEMORY_AUTO_RECALL,
+    CONF_MEMORY_AUTO_WRITE,
+    CONF_MEMORY_ENABLED,
+    CONF_MEMORY_MAX_ITEMS_PER_SCOPE,
+    CONF_MEMORY_RECALL_TOP_K,
+    CONF_MEMORY_RESUME_ENABLED,
+    CONF_MEMORY_RESUME_MAX_MESSAGES,
+    CONF_MEMORY_TTL_DAYS,
     CONF_OPENAI_API_KEY,
     CONF_OPENAI_BASE_URL,
     CONF_OPENAI_CODEX_ACCOUNT_ID,
@@ -105,6 +114,7 @@ from .const import (
     PROVIDER_OPENAI_CODEX,
     PROVIDER_GOOGLE_GEMINI_CLI,
     WEB_SEARCH_UNSUPPORTED_MODELS,
+    MEMORY_DEFAULTS,
 )
 
 from .tools import (
@@ -960,6 +970,12 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors or None,
         )
 
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow."""
+        return ClaudeAssistOptionsFlow(config_entry)
+
     @classmethod
     @callback
     def async_get_supported_subentry_types(
@@ -969,6 +985,110 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         return {
             "conversation": ConversationSubentryFlowHandler,
         }
+
+
+class ClaudeAssistOptionsFlow(OptionsFlow):
+    """Service-level options flow for memory settings."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        self._config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage service-level memory settings."""
+        if user_input is not None:
+            normalized = {
+                CONF_MEMORY_ENABLED: bool(
+                    user_input.get(
+                        CONF_MEMORY_ENABLED,
+                        MEMORY_DEFAULTS[CONF_MEMORY_ENABLED],
+                    )
+                ),
+                CONF_MEMORY_AUTO_WRITE: bool(
+                    user_input.get(
+                        CONF_MEMORY_AUTO_WRITE,
+                        MEMORY_DEFAULTS[CONF_MEMORY_AUTO_WRITE],
+                    )
+                ),
+                CONF_MEMORY_AUTO_RECALL: bool(
+                    user_input.get(
+                        CONF_MEMORY_AUTO_RECALL,
+                        MEMORY_DEFAULTS[CONF_MEMORY_AUTO_RECALL],
+                    )
+                ),
+                CONF_MEMORY_RESUME_ENABLED: bool(
+                    user_input.get(
+                        CONF_MEMORY_RESUME_ENABLED,
+                        MEMORY_DEFAULTS[CONF_MEMORY_RESUME_ENABLED],
+                    )
+                ),
+                CONF_MEMORY_TTL_DAYS: int(
+                    user_input.get(
+                        CONF_MEMORY_TTL_DAYS,
+                        MEMORY_DEFAULTS[CONF_MEMORY_TTL_DAYS],
+                    )
+                ),
+                CONF_MEMORY_MAX_ITEMS_PER_SCOPE: int(
+                    user_input.get(
+                        CONF_MEMORY_MAX_ITEMS_PER_SCOPE,
+                        MEMORY_DEFAULTS[CONF_MEMORY_MAX_ITEMS_PER_SCOPE],
+                    )
+                ),
+                CONF_MEMORY_RECALL_TOP_K: int(
+                    user_input.get(
+                        CONF_MEMORY_RECALL_TOP_K,
+                        MEMORY_DEFAULTS[CONF_MEMORY_RECALL_TOP_K],
+                    )
+                ),
+                CONF_MEMORY_RESUME_MAX_MESSAGES: int(
+                    user_input.get(
+                        CONF_MEMORY_RESUME_MAX_MESSAGES,
+                        MEMORY_DEFAULTS[CONF_MEMORY_RESUME_MAX_MESSAGES],
+                    )
+                ),
+            }
+            return self.async_create_entry(title="", data=normalized)
+
+        current = {
+            key: self._config_entry.options.get(key, default)
+            for key, default in MEMORY_DEFAULTS.items()
+        }
+        schema: VolDictType = {
+            vol.Optional(
+                CONF_MEMORY_ENABLED,
+                default=current[CONF_MEMORY_ENABLED],
+            ): bool,
+            vol.Optional(
+                CONF_MEMORY_AUTO_WRITE,
+                default=current[CONF_MEMORY_AUTO_WRITE],
+            ): bool,
+            vol.Optional(
+                CONF_MEMORY_AUTO_RECALL,
+                default=current[CONF_MEMORY_AUTO_RECALL],
+            ): bool,
+            vol.Optional(
+                CONF_MEMORY_RESUME_ENABLED,
+                default=current[CONF_MEMORY_RESUME_ENABLED],
+            ): bool,
+            vol.Optional(
+                CONF_MEMORY_TTL_DAYS,
+                default=current[CONF_MEMORY_TTL_DAYS],
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=3650)),
+            vol.Optional(
+                CONF_MEMORY_MAX_ITEMS_PER_SCOPE,
+                default=current[CONF_MEMORY_MAX_ITEMS_PER_SCOPE],
+            ): vol.All(vol.Coerce(int), vol.Range(min=10, max=5000)),
+            vol.Optional(
+                CONF_MEMORY_RECALL_TOP_K,
+                default=current[CONF_MEMORY_RECALL_TOP_K],
+            ): vol.All(vol.Coerce(int), vol.Range(min=1, max=20)),
+            vol.Optional(
+                CONF_MEMORY_RESUME_MAX_MESSAGES,
+                default=current[CONF_MEMORY_RESUME_MAX_MESSAGES],
+            ): vol.All(vol.Coerce(int), vol.Range(min=4, max=200)),
+        }
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
 
 
 class ConversationSubentryFlowHandler(ConfigSubentryFlow):

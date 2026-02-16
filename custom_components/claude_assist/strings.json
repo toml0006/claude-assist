@@ -54,6 +54,34 @@
       }
     }
   },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Memory settings",
+        "description": "Configure service-level memory behavior shared by all conversation agents in this provider entry.\n\nMemory slash commands (use in Assist chat):\n- `/memory help`\n- `/memory status`\n- `/memory add [--shared] <text>` (alias: `/remember`)\n- `/memory list [mine|shared|all] [--limit N]`\n- `/memory search <query> [--limit N]` (alias: `/memories`)\n- `/memory delete <memory_id>` (alias: `/forget`)\n- `/memory clear mine|shared|all --confirm`\n- `/new` or `/reset` to clear resumable context and start fresh\n\nFor Home Assistant timeline/history questions, enable these agent tools:\n`get_history`, `get_logbook`, `get_statistics`",
+        "data": {
+          "memory_enabled": "Enable memory",
+          "memory_auto_write": "Auto-capture explicit memory hints",
+          "memory_auto_recall": "Auto-recall memory in prompts",
+          "memory_resume_enabled": "Resume context after reopening Assist",
+          "memory_ttl_days": "Memory retention (days)",
+          "memory_max_items_per_scope": "Max memories per scope",
+          "memory_recall_top_k": "Max recalled memories per turn",
+          "memory_resume_max_messages": "Max resume messages"
+        },
+        "data_description": {
+          "memory_enabled": "Master switch for long-term memory and slash memory commands.",
+          "memory_auto_write": "Capture explicit phrases like 'remember that ...' into per-user memory.",
+          "memory_auto_recall": "Inject relevant memory snippets into the system prompt for normal chat turns.",
+          "memory_resume_enabled": "Persist recent transcript context so Assist can continue after dialog reopen.",
+          "memory_ttl_days": "Automatically expire memories older than this many days.",
+          "memory_max_items_per_scope": "Cap memory items for each scope (shared and each user).",
+          "memory_recall_top_k": "Maximum number of memory items injected per turn.",
+          "memory_resume_max_messages": "Maximum number of user/assistant messages kept for resumable context."
+        }
+      }
+    }
+  },
   "config_subentries": {
     "conversation": {
       "abort": {
@@ -75,6 +103,7 @@
           "title": "Advanced settings"
         },
         "init": {
+          "description": "Configure this agent's model and tool access.\n\nFor timeline/history analysis in chat, enable `get_history`, `get_logbook`, and `get_statistics` in **Enabled custom tools**.\nMemory slash commands are configured at the integration level (Integration → Configure).",
           "data": {
             "enabled_tools": "Enabled custom tools",
             "llm_hass_api": "Control Home Assistant",
