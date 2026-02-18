@@ -57,6 +57,29 @@ def test_parse_slash_command_clear_requires_confirm_flag_presence() -> None:
     }
 
 
+def test_parse_slash_command_sessions_commands() -> None:
+    assert parse_slash_command("/memory sessions") == {
+        "kind": "session_list",
+        "scope": "mine",
+        "limit": 20,
+    }
+    assert parse_slash_command("/sessions all --limit 5") == {
+        "kind": "session_list",
+        "scope": "all",
+        "limit": 5,
+    }
+    assert parse_slash_command("/memory sessions show abc123 --limit 7") == {
+        "kind": "session_show",
+        "id": "abc123",
+        "limit": 7,
+    }
+    assert parse_slash_command("/memory sessions clear all --confirm") == {
+        "kind": "session_clear",
+        "target": "all",
+        "confirm": True,
+    }
+
+
 def test_extract_heuristic_memory() -> None:
     assert extract_heuristic_memory("remember that my favorite color is green") == (
         "my favorite color is green"

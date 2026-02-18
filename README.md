@@ -50,7 +50,8 @@ For subscription users, it authenticates using OAuth flows compatible with popul
 - **Per-agent YOLO mode**: explicit opt-in to bypass exposure filtering and enable privileged tools
 - **Service-level memory (opt-in)**:
   - shared + per-user memory scopes
-  - slash commands (`/memory`, `/remember`, `/forget`, `/memories`)
+  - slash commands for memory and session management (`/memory`, `/sessions`, `/new`)
+  - Home Assistant addon services for memory/session admin (`claude_assist.memory_*`, `claude_assist.session_*`)
   - resumable conversation context across Assist dialog reopen
 
 ---
@@ -203,6 +204,19 @@ Enable YOLO mode only for trusted agents.
 
 Memory is configured at the **service entry** level (Integration → Configure), not per agent.
 
+Integration panel (recommended for memory/session management):
+- Open sidebar item **AI Assist Memory** (path: `/ai-subscription-assist-memory`)
+- Features: entry selector, memory/session tables, session transcript viewer, clear/delete actions
+- Uses websocket API commands:
+  - `claude_assist/entry_list`
+  - `claude_assist/memory_status`
+  - `claude_assist/memory_list`
+  - `claude_assist/memory_delete`
+  - `claude_assist/memory_clear`
+  - `claude_assist/session_list`
+  - `claude_assist/session_get`
+  - `claude_assist/session_clear`
+
 Commands:
 - `/memory status`
 - `/memory add [--shared] <text>`
@@ -210,8 +224,20 @@ Commands:
 - `/memory search <query> [--limit N]`
 - `/memory delete <memory_id>`
 - `/memory clear mine|shared|all --confirm`
-- aliases: `/remember`, `/forget`, `/memories`
+- `/memory sessions [mine|all] [--limit N]` (alias: `/sessions`)
+- `/memory sessions show <session_id> [--limit N]`
+- `/memory sessions clear <session_id|mine|all> --confirm`
+- aliases: `/remember`, `/forget`, `/memories`, `/sessions`
 - context reset: `/new` or `/reset`
+
+Addon services (Developer Tools → Actions):
+- `claude_assist.memory_status`
+- `claude_assist.memory_list`
+- `claude_assist.memory_delete`
+- `claude_assist.memory_clear`
+- `claude_assist.session_list`
+- `claude_assist.session_get`
+- `claude_assist.session_clear`
 
 Notes:
 - Default writes are per-user memory.
@@ -232,6 +258,7 @@ This integration works by mimicking Claude Code’s OAuth + request headers.
 
 - Richer memory UX (memory tagging, confidence, and user controls in the UI).
 - More provider backends and better UX around provider auth flows.
+- Addon web UI only if panel limits are reached (for example: p95 panel load > 2s, heavy import/export workflows, or long-running analytics/background jobs).
 
 ## Contributing
 

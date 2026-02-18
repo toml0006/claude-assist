@@ -1,0 +1,173 @@
+memory_status:
+  name: Memory status
+  description: Return memory and session settings/counters for one AI Subscription Assist config entry.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+      example: "6e8f4a3e0c6f9b96b77d96a5c98eab31"
+
+memory_list:
+  name: List memories
+  description: List memory items (mine/shared/all) for the selected provider entry.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    scope:
+      name: Scope
+      description: mine, shared, or all.
+      example: "mine"
+      selector:
+        select:
+          options:
+            - "mine"
+            - "shared"
+            - "all"
+    limit:
+      name: Limit
+      description: Maximum memory items to return.
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 500
+          mode: box
+    target_user_id:
+      name: Target user id
+      description: Admin-only override to inspect a specific user's memories.
+      example: "7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+
+memory_delete:
+  name: Delete memory
+  description: Delete one memory item by id.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    memory_id:
+      name: Memory id
+      description: ID from memory_list or /memory list output.
+      required: true
+      example: "a1b2c3d4e5f6"
+
+memory_clear:
+  name: Clear memories
+  description: Clear memory items by scope. Requires confirm=true.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    scope:
+      name: Scope
+      description: mine, shared, or all.
+      example: "mine"
+      selector:
+        select:
+          options:
+            - "mine"
+            - "shared"
+            - "all"
+    target_user_id:
+      name: Target user id
+      description: Admin-only override for mine/all user memory operations.
+      example: "7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+    confirm:
+      name: Confirm
+      description: Must be true to perform a destructive clear operation.
+      required: true
+      example: true
+      selector:
+        boolean:
+
+session_list:
+  name: List sessions
+  description: List resumable chat sessions for this provider entry.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    scope:
+      name: Scope
+      description: mine or all (all requires admin).
+      example: "mine"
+      selector:
+        select:
+          options:
+            - "mine"
+            - "all"
+    subentry_id:
+      name: Agent subentry id
+      description: Optional filter to one conversation agent subentry.
+      example: "8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"
+    target_user_id:
+      name: Target user id
+      description: Admin-only override to inspect one user's sessions.
+      example: "7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+    limit:
+      name: Limit
+      description: Maximum sessions to return.
+      example: 50
+      selector:
+        number:
+          min: 1
+          max: 500
+          mode: box
+
+session_get:
+  name: Get session
+  description: Return messages for one resumable session id.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    session_id:
+      name: Session id
+      description: Value from session_list output.
+      required: true
+      example: "8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f:7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+    limit:
+      name: Message limit
+      description: Maximum messages to return from the end of the session.
+      example: 100
+      selector:
+        number:
+          min: 1
+          max: 500
+          mode: box
+
+session_clear:
+  name: Clear sessions
+  description: Clear sessions by scope, by subentry, or by one session id. Requires confirm=true.
+  fields:
+    config_entry_id:
+      name: Config entry id
+      description: Optional when only one AI Subscription Assist provider entry exists.
+    scope:
+      name: Scope
+      description: mine or all. Ignored when session_id is provided.
+      example: "mine"
+      selector:
+        select:
+          options:
+            - "mine"
+            - "all"
+    session_id:
+      name: Session id
+      description: If set, clears exactly this session.
+      example: "8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f:7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+    subentry_id:
+      name: Agent subentry id
+      description: Optional filter when clearing by scope.
+      example: "8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f"
+    target_user_id:
+      name: Target user id
+      description: Admin-only override when clearing by scope.
+      example: "7f6cbfbc8cb84dc6b1fd1d3abf94b6dc"
+    confirm:
+      name: Confirm
+      description: Must be true to perform a destructive clear operation.
+      required: true
+      example: true
+      selector:
+        boolean:

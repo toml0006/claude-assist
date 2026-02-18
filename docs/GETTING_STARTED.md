@@ -117,6 +117,7 @@ Prompt examples:
 - `/memory status`
 - `/remember I prefer concise responses`
 - `/memory list mine`
+- `/memory sessions`
 - `/new`
 
 ### 6.3 History and timeline analysis
@@ -144,6 +145,25 @@ Capture:
 - A response using history/logbook/statistics context
 - A response using internet lookup with source URLs
 
+### 6.5 Manage memory/session in integration panel
+Open sidebar item `AI Assist Memory` (path: `/ai-subscription-assist-memory`) and validate:
+- Entry selector works across provider entries
+- Memory filters (`scope`, search) and delete/clear actions
+- Session filters (`scope`, `subentry_id`) and session detail viewer
+
+Screenshot to capture:
+- Panel showing memory table + session table + session detail
+
+### 6.6 Manage memory/session in addon services
+Open `Developer Tools -> Actions` and use:
+- `claude_assist.memory_status`
+- `claude_assist.memory_list`
+- `claude_assist.memory_delete`
+- `claude_assist.memory_clear`
+- `claude_assist.session_list`
+- `claude_assist.session_get`
+- `claude_assist.session_clear`
+
 ---
 
 ## 7) Screenshot File Checklist
@@ -159,6 +179,7 @@ Expected filenames:
 - `05-memory-settings.png`
 - `06-assist-memory-command.png`
 - `07-assist-capabilities.png`
+- `08-memory-panel.png`
 
 Capture quality guidelines:
 - Use desktop aspect ratio when possible.

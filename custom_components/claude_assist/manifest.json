@@ -1,10 +1,10 @@
 {
   "domain": "claude_assist",
   "name": "AI Subscription Assist",
-  "after_dependencies": ["assist_pipeline", "intent"],
+  "after_dependencies": ["assist_pipeline", "intent", "frontend"],
   "codeowners": ["@toml0006"],
   "config_flow": true,
-  "dependencies": ["conversation"],
+  "dependencies": ["conversation", "panel_custom"],
   "documentation": "https://github.com/toml0006/ai-subscription-assist",
   "integration_type": "service",
   "iot_class": "cloud_polling",

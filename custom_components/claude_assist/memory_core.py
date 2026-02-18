@@ -99,6 +99,11 @@ def parse_slash_command(text: str) -> dict[str, Any] | None:
 
     cmd = argv[0].lower()
 
+    # Alias: /sessions ... -> /memory sessions ...
+    if cmd == "/sessions":
+        argv = ["/memory", "sessions", *argv[1:]]
+        cmd = "/memory"
+
     if cmd in {"/new", "/reset"}:
         return {"kind": "reset_context"}
 
@@ -193,6 +198,51 @@ def parse_slash_command(text: str) -> dict[str, Any] | None:
             scope = args[0]
         confirmed = "--confirm" in args
         return {"kind": "memory_clear", "scope": scope, "confirm": confirmed}
+    if subcmd == "sessions":
+        if not args:
+            return {"kind": "session_list", "scope": "mine", "limit": 20}
+
+        action = args[0].lower()
+        if action == "show":
+            if len(args) < 2:
+                return {
+                    "kind": "error",
+                    "error": "Usage: /memory sessions show <session_id> [--limit N]",
+                }
+            return {
+                "kind": "session_show",
+                "id": args[1],
+                "limit": _parse_limit(args[2:], 40),
+            }
+
+        if action == "clear":
+            clear_args = args[1:]
+            target = "mine"
+            for token in clear_args:
+                if token != "--confirm":
+                    target = token
+                    break
+            confirmed = "--confirm" in clear_args
+            return {"kind": "session_clear", "target": target, "confirm": confirmed}
+
+        if action in {"mine", "all"}:
+            return {
+                "kind": "session_list",
+                "scope": action,
+                "limit": _parse_limit(args[1:], 20),
+            }
+
+        if action == "--limit":
+            return {"kind": "session_list", "scope": "mine", "limit": _parse_limit(args, 20)}
+
+        return {
+            "kind": "error",
+            "error": (
+                "Usage: /memory sessions [mine|all] [--limit N] | "
+                "/memory sessions show <session_id> [--limit N] | "
+                "/memory sessions clear <session_id|mine|all> --confirm"
+            ),
+        }
 
     return {"kind": "error", "error": f"Unknown /memory subcommand '{subcmd}'."}
 

@@ -32,6 +32,7 @@ from .const import (
     DEFAULT_GEMINI_CLI_BASE_URL,
     DEFAULT_OPENAI_BASE_URL,
     DEFAULT_OPENAI_CODEX_BASE_URL,
+    DATA_MEMORY_SERVICES,
     DOMAIN,
     GOOGLE_GEMINI_CLI_OAUTH_CLIENT_ID,
     GOOGLE_GEMINI_CLI_OAUTH_CLIENT_SECRET,
@@ -52,6 +53,8 @@ from .memory_service import (
     async_remove_memory_service_for_entry,
     async_setup_memory_service_for_entry,
 )
+from .memory_websocket import async_setup_memory_websocket_api
+from .panel import async_setup_memory_panel, async_unload_memory_panel
 
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -145,6 +148,8 @@ type ClaudeAssistConfigEntry = ConfigEntry[ClaudeAssistRuntimeData]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Set up AI Subscription Assist."""
+    async_setup_memory_websocket_api(hass)
+    await async_setup_memory_panel(hass)
     return True
 
 
@@ -629,6 +634,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload AI Subscription Assist."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     async_remove_memory_service_for_entry(hass, entry.entry_id)
+    domain_data = hass.data.get(DOMAIN, {})
+    services = domain_data.get(DATA_MEMORY_SERVICES, {})
+    if not services:
+        async_unload_memory_panel(hass)
     return unloaded
 
 

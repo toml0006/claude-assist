@@ -102,6 +102,15 @@ MEMORY_DEFAULTS = {
 
 DATA_REPAIR_DEFER_RELOAD = "repair_defer_reload"
 DATA_MEMORY_SERVICES = "memory_services"
+DATA_MEMORY_WS_REGISTERED = "memory_ws_registered"
+DATA_MEMORY_PANEL_REGISTERED = "memory_panel_registered"
+
+PANEL_URL_PATH = "ai-subscription-assist-memory"
+PANEL_COMPONENT_NAME = "claude-assist-memory-panel"
+PANEL_SIDEBAR_TITLE = "AI Assist Memory"
+PANEL_SIDEBAR_ICON = "mdi:brain"
+PANEL_STATIC_BASE_URL = f"/api/{DOMAIN}/panel"
+PANEL_MODULE_URL = f"{PANEL_STATIC_BASE_URL}/claude-assist-memory-panel.js"
 
 DEFAULT = {
     CONF_CHAT_MODEL: "claude-haiku-4-5",
