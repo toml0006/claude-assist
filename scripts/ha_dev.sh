@@ -10,7 +10,7 @@ ha_compose() {
 }
 
 ha_exec() {
-  docker exec -i claude-assist-ha "$@"
+  docker exec -i ai-subscription-assist-ha "$@"
 }
 
 wait_for_ha() {

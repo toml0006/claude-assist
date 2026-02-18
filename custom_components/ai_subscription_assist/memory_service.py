@@ -119,7 +119,7 @@ class _FastEmbedder:
             return self._embedder
 
 
-class ClaudeAssistMemoryService:
+class AiSubscriptionAssistMemoryService:
     """Memory manager scoped to a single config entry."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -1229,7 +1229,7 @@ class ClaudeAssistMemoryService:
         )
 
 
-def _get_services(hass: HomeAssistant) -> dict[str, ClaudeAssistMemoryService]:
+def _get_services(hass: HomeAssistant) -> dict[str, AiSubscriptionAssistMemoryService]:
     domain_data = hass.data.setdefault(DOMAIN, {})
     services = domain_data.get(DATA_MEMORY_SERVICES)
     if not isinstance(services, dict):
@@ -1244,7 +1244,7 @@ def _domain_data(hass: HomeAssistant) -> dict[str, Any]:
 
 def _resolve_entry_memory_service(
     hass: HomeAssistant, config_entry_id: str | None
-) -> tuple[str, ClaudeAssistMemoryService]:
+) -> tuple[str, AiSubscriptionAssistMemoryService]:
     services = _get_services(hass)
     if config_entry_id:
         selected = services.get(config_entry_id)
@@ -1513,10 +1513,10 @@ def _async_unload_memory_domain_services(hass: HomeAssistant) -> None:
 
 async def async_setup_memory_service_for_entry(
     hass: HomeAssistant, entry: ConfigEntry
-) -> ClaudeAssistMemoryService:
+) -> AiSubscriptionAssistMemoryService:
     """Create and register an entry memory service."""
     await async_setup_memory_domain_services(hass)
-    service = ClaudeAssistMemoryService(hass, entry)
+    service = AiSubscriptionAssistMemoryService(hass, entry)
     await service.async_initialize()
     _get_services(hass)[entry.entry_id] = service
     return service
@@ -1532,6 +1532,6 @@ def async_remove_memory_service_for_entry(hass: HomeAssistant, entry_id: str) ->
 
 def get_memory_service(
     hass: HomeAssistant, entry_id: str
-) -> ClaudeAssistMemoryService | None:
+) -> AiSubscriptionAssistMemoryService | None:
     """Return memory service for entry."""
     return _get_services(hass).get(entry_id)

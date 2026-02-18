@@ -9,10 +9,10 @@ from pathlib import Path
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "claude_assist"
+    / "ai_subscription_assist"
     / "provider_errors.py"
 )
-SPEC = importlib.util.spec_from_file_location("claude_assist_provider_errors", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("ai_subscription_assist_provider_errors", MODULE_PATH)
 assert SPEC and SPEC.loader
 provider_errors = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(provider_errors)

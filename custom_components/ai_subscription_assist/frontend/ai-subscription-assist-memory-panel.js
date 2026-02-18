@@ -1,15 +1,15 @@
 const WS = {
-  ENTRY_LIST: "claude_assist/entry_list",
-  MEMORY_STATUS: "claude_assist/memory_status",
-  MEMORY_LIST: "claude_assist/memory_list",
-  MEMORY_DELETE: "claude_assist/memory_delete",
-  MEMORY_CLEAR: "claude_assist/memory_clear",
-  SESSION_LIST: "claude_assist/session_list",
-  SESSION_GET: "claude_assist/session_get",
-  SESSION_CLEAR: "claude_assist/session_clear",
+  ENTRY_LIST: "ai_subscription_assist/entry_list",
+  MEMORY_STATUS: "ai_subscription_assist/memory_status",
+  MEMORY_LIST: "ai_subscription_assist/memory_list",
+  MEMORY_DELETE: "ai_subscription_assist/memory_delete",
+  MEMORY_CLEAR: "ai_subscription_assist/memory_clear",
+  SESSION_LIST: "ai_subscription_assist/session_list",
+  SESSION_GET: "ai_subscription_assist/session_get",
+  SESSION_CLEAR: "ai_subscription_assist/session_clear",
 };
 
-class ClaudeAssistMemoryPanel extends HTMLElement {
+class AiSubscriptionAssistMemoryPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -822,4 +822,4 @@ class ClaudeAssistMemoryPanel extends HTMLElement {
   }
 }
 
-customElements.define("claude-assist-memory-panel", ClaudeAssistMemoryPanel);
+customElements.define("ai-subscription-assist-memory-panel", AiSubscriptionAssistMemoryPanel);

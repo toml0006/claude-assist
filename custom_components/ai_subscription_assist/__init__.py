@@ -32,7 +32,6 @@ from .const import (
     DEFAULT_GEMINI_CLI_BASE_URL,
     DEFAULT_OPENAI_BASE_URL,
     DEFAULT_OPENAI_CODEX_BASE_URL,
-    DATA_MEMORY_SERVICES,
     DOMAIN,
     GOOGLE_GEMINI_CLI_OAUTH_CLIENT_ID,
     GOOGLE_GEMINI_CLI_OAUTH_CLIENT_SECRET,
@@ -54,7 +53,7 @@ from .memory_service import (
     async_setup_memory_service_for_entry,
 )
 from .memory_websocket import async_setup_memory_websocket_api
-from .panel import async_setup_memory_panel, async_unload_memory_panel
+from .panel import async_setup_memory_panel
 
 PLATFORMS = (Platform.CONVERSATION,)
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
@@ -142,8 +141,8 @@ class GeminiCliClient:
         resp.raise_for_status()
 
 
-type ClaudeAssistRuntimeData = anthropic.AsyncClient | OpenAIClient | OpenAICodexClient | GeminiCliClient
-type ClaudeAssistConfigEntry = ConfigEntry[ClaudeAssistRuntimeData]
+type AiSubscriptionAssistRuntimeData = anthropic.AsyncClient | OpenAIClient | OpenAICodexClient | GeminiCliClient
+type AiSubscriptionAssistConfigEntry = ConfigEntry[AiSubscriptionAssistRuntimeData]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -368,9 +367,14 @@ async def _async_validate_oauth_client(client: anthropic.AsyncClient) -> None:
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: ClaudeAssistConfigEntry
+    hass: HomeAssistant, entry: AiSubscriptionAssistConfigEntry
 ) -> bool:
     """Set up AI Subscription Assist from a config entry."""
+    # Ensure panel/ws are present when an entry is added after all entries were unloaded.
+    # These helpers are idempotent.
+    async_setup_memory_websocket_api(hass)
+    await async_setup_memory_panel(hass)
+
     provider = entry.data.get(CONF_PROVIDER, PROVIDER_CLAUDE_OAUTH)
 
     if provider == PROVIDER_OPENAI:
@@ -514,18 +518,18 @@ async def async_setup_entry(
 
         entry.runtime_data = client
 
-    # Migrate old LLM API id (claude_assist) to per-subentry ids (claude_assist.<subentry_id>)
+    # Migrate old LLM API id (ai_subscription_assist) to per-subentry ids (ai_subscription_assist.<subentry_id>)
     for subentry in entry.subentries.values():
         if subentry.subentry_type != "conversation":
             continue
         llm_apis = subentry.data.get(CONF_LLM_HASS_API)
-        if llm_apis == ["claude_assist"] or llm_apis == "claude_assist":
+        if llm_apis == ["ai_subscription_assist"] or llm_apis == "ai_subscription_assist":
             hass.config_entries.async_update_subentry(
                 entry,
                 subentry,
                 data={
                     **subentry.data,
-                    CONF_LLM_HASS_API: [f"claude_assist.{subentry.subentry_id}"],
+                    CONF_LLM_HASS_API: [f"ai_subscription_assist.{subentry.subentry_id}"],
                 },
             )
 
@@ -540,7 +544,7 @@ async def async_setup_entry(
                 subentry,
                 data={
                     **subentry.data,
-                    CONF_LLM_HASS_API: [f"claude_assist.{subentry.subentry_id}"],
+                    CONF_LLM_HASS_API: [f"ai_subscription_assist.{subentry.subentry_id}"],
                 },
             )
 
@@ -618,9 +622,9 @@ async def async_setup_entry(
     await async_setup_memory_service_for_entry(hass, entry)
 
     # Register per-agent LLM APIs (one per conversation subentry)
-    from .api import async_register_claude_assist_apis
+    from .api import async_register_ai_subscription_assist_apis
 
-    unregister_apis = async_register_claude_assist_apis(hass, entry)
+    unregister_apis = async_register_ai_subscription_assist_apis(hass, entry)
     entry.async_on_unload(unregister_apis)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
@@ -634,15 +638,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload AI Subscription Assist."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     async_remove_memory_service_for_entry(hass, entry.entry_id)
-    domain_data = hass.data.get(DOMAIN, {})
-    services = domain_data.get(DATA_MEMORY_SERVICES, {})
-    if not services:
-        async_unload_memory_panel(hass)
     return unloaded
 
 
 async def async_update_options(
-    hass: HomeAssistant, entry: ClaudeAssistConfigEntry
+    hass: HomeAssistant, entry: AiSubscriptionAssistConfigEntry
 ) -> None:
     """Update options."""
     await hass.config_entries.async_reload(entry.entry_id)

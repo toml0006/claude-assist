@@ -84,7 +84,7 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.json import json_dumps
 from homeassistant.util import slugify
 
-from . import ClaudeAssistConfigEntry
+from . import AiSubscriptionAssistConfigEntry
 from .const import (
     CONF_ACCESS_TOKEN,
     CONF_CHAT_MODEL,
@@ -815,13 +815,13 @@ def _create_token_stats(
     }
 
 
-class ClaudeAssistBaseLLMEntity(Entity):
+class AiSubscriptionAssistBaseLLMEntity(Entity):
     """AI Subscription Assist base LLM entity."""
 
     _attr_has_entity_name = True
     _attr_name = None
 
-    def __init__(self, entry: ClaudeAssistConfigEntry, subentry: ConfigSubentry) -> None:
+    def __init__(self, entry: AiSubscriptionAssistConfigEntry, subentry: ConfigSubentry) -> None:
         """Initialize the entity."""
         self.entry = entry
         self.subentry = subentry

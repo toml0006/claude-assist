@@ -13,10 +13,10 @@ from .tools import get_custom_tools
 
 
 def _api_id_for_subentry(subentry_id: str) -> str:
-    return f"claude_assist.{subentry_id}"
+    return f"ai_subscription_assist.{subentry_id}"
 
 
-class ClaudeAssistSubentryAPI(llm.API):
+class AiSubscriptionAssistSubentryAPI(llm.API):
     """LLM API bound to a specific conversation subentry.
 
     This allows per-agent tool enable/disable.
@@ -88,7 +88,7 @@ class ClaudeAssistSubentryAPI(llm.API):
 
 
 @callback
-def async_register_claude_assist_apis(hass: HomeAssistant, entry: ConfigEntry) -> Callable[[], None]:
+def async_register_ai_subscription_assist_apis(hass: HomeAssistant, entry: ConfigEntry) -> Callable[[], None]:
     """Register per-subentry AI Subscription Assist APIs.
 
     Returns an unregister callable.
@@ -97,7 +97,7 @@ def async_register_claude_assist_apis(hass: HomeAssistant, entry: ConfigEntry) -
     for subentry in entry.subentries.values():
         if subentry.subentry_type != "conversation":
             continue
-        api = ClaudeAssistSubentryAPI(hass, entry, subentry.subentry_id)
+        api = AiSubscriptionAssistSubentryAPI(hass, entry, subentry.subentry_id)
         try:
             unregisters.append(llm.async_register_api(hass, api))
         except Exception as err:

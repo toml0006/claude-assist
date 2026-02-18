@@ -11,7 +11,7 @@ homeassistant:
 logger:
   default: info
   logs:
-    custom_components.claude_assist: debug
+    custom_components.ai_subscription_assist: debug
 
 # Built-in demo entities (sensors, lights, media players, etc.).
 demo:

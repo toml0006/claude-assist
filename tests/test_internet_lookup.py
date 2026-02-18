@@ -8,10 +8,10 @@ from pathlib import Path
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "claude_assist"
+    / "ai_subscription_assist"
     / "internet_lookup.py"
 )
-SPEC = importlib.util.spec_from_file_location("claude_assist_internet_lookup", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("ai_subscription_assist_internet_lookup", MODULE_PATH)
 assert SPEC and SPEC.loader
 internet_lookup = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(internet_lookup)

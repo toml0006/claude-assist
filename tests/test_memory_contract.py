@@ -8,10 +8,10 @@ from pathlib import Path
 CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "claude_assist"
+    / "ai_subscription_assist"
     / "memory_contract.py"
 )
-SPEC = importlib.util.spec_from_file_location("claude_assist_memory_contract", CONTRACT_PATH)
+SPEC = importlib.util.spec_from_file_location("ai_subscription_assist_memory_contract", CONTRACT_PATH)
 assert SPEC and SPEC.loader
 memory_contract = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(memory_contract)

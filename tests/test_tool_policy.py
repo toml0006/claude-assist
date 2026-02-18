@@ -8,10 +8,10 @@ from pathlib import Path
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "claude_assist"
+    / "ai_subscription_assist"
     / "tool_policy.py"
 )
-SPEC = importlib.util.spec_from_file_location("claude_assist_tool_policy", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("ai_subscription_assist_tool_policy", MODULE_PATH)
 assert SPEC and SPEC.loader
 tool_policy = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(tool_policy)

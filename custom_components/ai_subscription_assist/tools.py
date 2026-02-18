@@ -54,7 +54,7 @@ def _validate_exposed_entities(
     return [eid for eid in entity_ids if not _should_expose(hass, eid)]
 
 
-class ClaudeAssistTool(llm.Tool):
+class AiSubscriptionAssistTool(llm.Tool):
     """Base class for custom tools with yolo helpers."""
 
     def __init__(
@@ -79,7 +79,7 @@ class ClaudeAssistTool(llm.Tool):
         return _validate_exposed_entities(hass, self._entry, self._subentry_id, entity_ids)
 
 
-class SetModelTool(ClaudeAssistTool):
+class SetModelTool(AiSubscriptionAssistTool):
     """Tool to change the active model for the conversation agent."""
 
     name = "set_model"
@@ -148,7 +148,7 @@ def _should_expose(hass: HomeAssistant, entity_id: str) -> bool:
         return True
 
 
-class GetHistoryTool(ClaudeAssistTool):
+class GetHistoryTool(AiSubscriptionAssistTool):
     """Tool to retrieve entity state history."""
 
     name = "get_history"
@@ -267,7 +267,7 @@ class GetHistoryTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class GetLogbookTool(ClaudeAssistTool):
+class GetLogbookTool(AiSubscriptionAssistTool):
     """Tool to retrieve logbook entries."""
 
     name = "get_logbook"
@@ -381,7 +381,7 @@ class GetLogbookTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class RenderTemplateTool(ClaudeAssistTool):
+class RenderTemplateTool(AiSubscriptionAssistTool):
     """Tool to evaluate Jinja2 templates."""
 
     name = "render_template"
@@ -427,7 +427,7 @@ class RenderTemplateTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class InternetLookupTool(ClaudeAssistTool):
+class InternetLookupTool(AiSubscriptionAssistTool):
     """Tool to search/fetch public internet content in read-only mode."""
 
     name = "internet_lookup"
@@ -570,7 +570,7 @@ class InternetLookupTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class GetStatisticsTool(ClaudeAssistTool):
+class GetStatisticsTool(AiSubscriptionAssistTool):
     """Tool to get recorder statistics."""
 
     name = "get_statistics"
@@ -664,7 +664,7 @@ class GetStatisticsTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class ListAutomationsTool(ClaudeAssistTool):
+class ListAutomationsTool(AiSubscriptionAssistTool):
     """Tool to list all automations."""
 
     name = "list_automations"
@@ -706,7 +706,7 @@ class ListAutomationsTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class ToggleAutomationTool(ClaudeAssistTool):
+class ToggleAutomationTool(AiSubscriptionAssistTool):
     """Tool to enable/disable an automation."""
 
     name = "toggle_automation"
@@ -770,7 +770,7 @@ class ToggleAutomationTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class AddAutomationTool(ClaudeAssistTool):
+class AddAutomationTool(AiSubscriptionAssistTool):
     """Tool to create a new automation."""
 
     name = "add_automation"
@@ -875,7 +875,7 @@ class AddAutomationTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class ModifyDashboardTool(ClaudeAssistTool):
+class ModifyDashboardTool(AiSubscriptionAssistTool):
     """Tool to read/modify Lovelace dashboard config via official APIs."""
 
     name = "modify_dashboard"
@@ -1332,7 +1332,7 @@ class ModifyDashboardTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class CallServiceTool(ClaudeAssistTool):
+class CallServiceTool(AiSubscriptionAssistTool):
     """Tool to call arbitrary Home Assistant services."""
 
     name = "call_service"
@@ -1413,7 +1413,7 @@ class CallServiceTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class SendNotificationTool(ClaudeAssistTool):
+class SendNotificationTool(AiSubscriptionAssistTool):
     """Tool to send notifications."""
 
     name = "send_notification"
@@ -1487,7 +1487,7 @@ class SendNotificationTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class GetErrorLogTool(ClaudeAssistTool):
+class GetErrorLogTool(AiSubscriptionAssistTool):
     """Tool to get HA error log."""
 
     name = "get_error_log"
@@ -1540,7 +1540,7 @@ class GetErrorLogTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class WhoIsHomeTool(ClaudeAssistTool):
+class WhoIsHomeTool(AiSubscriptionAssistTool):
     """Tool to check who is home."""
 
     name = "who_is_home"
@@ -1592,7 +1592,7 @@ class WhoIsHomeTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class ManageListTool(ClaudeAssistTool):
+class ManageListTool(AiSubscriptionAssistTool):
     """Tool to manage shopping/todo lists."""
 
     name = "manage_list"
@@ -1698,7 +1698,7 @@ class ManageListTool(ClaudeAssistTool):
             return {"error": str(e)}
 
 
-class GetCalendarEventsTool(ClaudeAssistTool):
+class GetCalendarEventsTool(AiSubscriptionAssistTool):
     """Tool to get calendar events."""
 
     name = "get_calendar_events"

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 # Keep in sync with const.DOMAIN, duplicated so this module stays pure/importable
 # without Home Assistant package context.
-DOMAIN = "claude_assist"
+DOMAIN = "ai_subscription_assist"
 
 WS_TYPE_ENTRY_LIST = f"{DOMAIN}/entry_list"
 WS_TYPE_MEMORY_STATUS = f"{DOMAIN}/memory_status"

@@ -447,7 +447,7 @@ async def get_model_list(client: anthropic.AsyncAnthropic) -> list[SelectOptionD
     return model_options
 
 
-class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
+class AiSubscriptionAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for AI Subscription Assist."""
 
     VERSION = 1
@@ -995,7 +995,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
         """Return the options flow."""
-        return ClaudeAssistOptionsFlow(config_entry)
+        return AiSubscriptionAssistOptionsFlow(config_entry)
 
     @classmethod
     @callback
@@ -1008,7 +1008,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         }
 
 
-class ClaudeAssistOptionsFlow(OptionsFlow):
+class AiSubscriptionAssistOptionsFlow(OptionsFlow):
     """Service-level options flow for memory settings."""
 
     def __init__(self, config_entry: ConfigEntry) -> None:
@@ -1229,8 +1229,12 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
         if user_input is not None:
             yolo_mode = bool(user_input.get(CONF_YOLO_MODE, yolo_mode_default))
             user_input[CONF_YOLO_MODE] = yolo_mode
+            selected_tools = user_input.get(
+                CONF_ENABLED_TOOLS,
+                self.options.get(CONF_ENABLED_TOOLS, enabled_tools_default),
+            )
             user_input[CONF_ENABLED_TOOLS] = normalize_enabled_tools(
-                user_input.get(CONF_ENABLED_TOOLS), yolo_mode
+                selected_tools, yolo_mode
             )
 
             # For new subentries, the correct per-subentry LLM API id does not exist

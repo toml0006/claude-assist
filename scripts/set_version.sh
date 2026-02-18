@@ -16,7 +16,7 @@ fi
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION_FILE="$ROOT_DIR/VERSION"
-MANIFEST_FILE="$ROOT_DIR/custom_components/claude_assist/manifest.json"
+MANIFEST_FILE="$ROOT_DIR/custom_components/ai_subscription_assist/manifest.json"
 
 printf "%s\n" "$VERSION" >"$VERSION_FILE"
 
@@ -33,7 +33,7 @@ echo "  - $VERSION_FILE"
 echo "  - $MANIFEST_FILE"
 echo
 echo "Next:"
-echo "  1) git add VERSION custom_components/claude_assist/manifest.json"
+echo "  1) git add VERSION custom_components/ai_subscription_assist/manifest.json"
 echo "  2) git commit -m \"Release v$VERSION\""
 echo "  3) git tag v$VERSION"
 echo "  4) git push origin main --tags"

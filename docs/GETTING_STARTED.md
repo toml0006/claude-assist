@@ -156,13 +156,13 @@ Screenshot to capture:
 
 ### 6.6 Manage memory/session in addon services
 Open `Developer Tools -> Actions` and use:
-- `claude_assist.memory_status`
-- `claude_assist.memory_list`
-- `claude_assist.memory_delete`
-- `claude_assist.memory_clear`
-- `claude_assist.session_list`
-- `claude_assist.session_get`
-- `claude_assist.session_clear`
+- `ai_subscription_assist.memory_status`
+- `ai_subscription_assist.memory_list`
+- `ai_subscription_assist.memory_delete`
+- `ai_subscription_assist.memory_clear`
+- `ai_subscription_assist.session_list`
+- `ai_subscription_assist.session_get`
+- `ai_subscription_assist.session_clear`
 
 ---
 

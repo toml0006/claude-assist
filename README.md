@@ -51,7 +51,7 @@ For subscription users, it authenticates using OAuth flows compatible with popul
 - **Service-level memory (opt-in)**:
   - shared + per-user memory scopes
   - slash commands for memory and session management (`/memory`, `/sessions`, `/new`)
-  - Home Assistant addon services for memory/session admin (`claude_assist.memory_*`, `claude_assist.session_*`)
+  - Home Assistant addon services for memory/session admin (`ai_subscription_assist.memory_*`, `ai_subscription_assist.session_*`)
   - resumable conversation context across Assist dialog reopen
 
 ---
@@ -91,16 +91,16 @@ You can install via HACS (recommended) or manually.
 
 ### Option B: Manual
 
-1. Copy `custom_components/claude_assist` into your HA config directory:
-   - `/config/custom_components/claude_assist`
+1. Copy `custom_components/ai_subscription_assist` into your HA config directory:
+   - `/config/custom_components/ai_subscription_assist`
 2. Restart Home Assistant
 
-Note: the integration domain/folder is currently still `claude_assist` for backwards compatibility.
+Note: the integration domain/folder is currently still `ai_subscription_assist` for backwards compatibility.
 
 ### Versioning and updates (HACS + Home Assistant)
 
 Home Assistant reads the integration version from:
-- `custom_components/claude_assist/manifest.json`
+- `custom_components/ai_subscription_assist/manifest.json`
 
 HACS update detection is most reliable when each release is tagged and published on GitHub.
 
@@ -113,7 +113,7 @@ To bump versions consistently, run:
 Then release:
 
 ```bash
-git add VERSION custom_components/claude_assist/manifest.json
+git add VERSION custom_components/ai_subscription_assist/manifest.json
 git commit -m "Release v1.3.2"
 git tag v1.3.2
 git push origin main --tags
@@ -230,14 +230,14 @@ Integration panel (recommended for memory/session management):
 - Open sidebar item **AI Assist Memory** (path: `/ai-subscription-assist-memory`)
 - Features: entry selector, memory/session tables, session transcript viewer, clear/delete actions
 - Uses websocket API commands:
-  - `claude_assist/entry_list`
-  - `claude_assist/memory_status`
-  - `claude_assist/memory_list`
-  - `claude_assist/memory_delete`
-  - `claude_assist/memory_clear`
-  - `claude_assist/session_list`
-  - `claude_assist/session_get`
-  - `claude_assist/session_clear`
+  - `ai_subscription_assist/entry_list`
+  - `ai_subscription_assist/memory_status`
+  - `ai_subscription_assist/memory_list`
+  - `ai_subscription_assist/memory_delete`
+  - `ai_subscription_assist/memory_clear`
+  - `ai_subscription_assist/session_list`
+  - `ai_subscription_assist/session_get`
+  - `ai_subscription_assist/session_clear`
 
 Commands:
 - `/memory status`
@@ -253,13 +253,13 @@ Commands:
 - context reset: `/new` or `/reset`
 
 Addon services (Developer Tools → Actions):
-- `claude_assist.memory_status`
-- `claude_assist.memory_list`
-- `claude_assist.memory_delete`
-- `claude_assist.memory_clear`
-- `claude_assist.session_list`
-- `claude_assist.session_get`
-- `claude_assist.session_clear`
+- `ai_subscription_assist.memory_status`
+- `ai_subscription_assist.memory_list`
+- `ai_subscription_assist.memory_delete`
+- `ai_subscription_assist.memory_clear`
+- `ai_subscription_assist.session_list`
+- `ai_subscription_assist.session_get`
+- `ai_subscription_assist.session_clear`
 
 Notes:
 - Default writes are per-user memory.
@@ -320,7 +320,7 @@ Then open `http://localhost:8123`.
 
 Notes:
 - The HA config lives in `dev/ha_config/` (state files are gitignored).
-- The integration is bind-mounted into `/config/custom_components/claude_assist`.
+- The integration is bind-mounted into `/config/custom_components/ai_subscription_assist`.
 - After Python code changes, restart HA with `./scripts/ha_dev.sh restart`.
 
 ---

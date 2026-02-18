@@ -1,5 +1,5 @@
 {
-  "domain": "claude_assist",
+  "domain": "ai_subscription_assist",
   "name": "AI Subscription Assist",
   "after_dependencies": ["assist_pipeline", "intent", "frontend"],
   "codeowners": ["@toml0006"],

@@ -16,6 +16,6 @@ python -m pip install -r "${ROOT_DIR}/requirements-dev.txt"
 
 export PYTHONPATH="${ROOT_DIR}:${PYTHONPATH:-}"
 
-python -m compileall -q "${ROOT_DIR}/custom_components/claude_assist"
-ruff check "${ROOT_DIR}/custom_components/claude_assist" "${ROOT_DIR}/tests"
+python -m compileall -q "${ROOT_DIR}/custom_components/ai_subscription_assist"
+ruff check "${ROOT_DIR}/custom_components/ai_subscription_assist" "${ROOT_DIR}/tests"
 pytest -q "${ROOT_DIR}/tests"

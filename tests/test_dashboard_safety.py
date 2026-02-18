@@ -8,10 +8,10 @@ from pathlib import Path
 MODULE_PATH = (
     Path(__file__).resolve().parents[1]
     / "custom_components"
-    / "claude_assist"
+    / "ai_subscription_assist"
     / "dashboard_safety.py"
 )
-SPEC = importlib.util.spec_from_file_location("claude_assist_dashboard_safety", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location("ai_subscription_assist_dashboard_safety", MODULE_PATH)
 assert SPEC and SPEC.loader
 dashboard_safety = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(dashboard_safety)

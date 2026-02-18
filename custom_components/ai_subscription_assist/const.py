@@ -2,7 +2,7 @@
 
 import logging
 
-DOMAIN = "claude_assist"
+DOMAIN = "ai_subscription_assist"
 LOGGER = logging.getLogger(__package__)
 
 DEFAULT_CONVERSATION_NAME = "AI Subscription Assist conversation"
@@ -106,11 +106,11 @@ DATA_MEMORY_WS_REGISTERED = "memory_ws_registered"
 DATA_MEMORY_PANEL_REGISTERED = "memory_panel_registered"
 
 PANEL_URL_PATH = "ai-subscription-assist-memory"
-PANEL_COMPONENT_NAME = "claude-assist-memory-panel"
+PANEL_COMPONENT_NAME = "ai-subscription-assist-memory-panel"
 PANEL_SIDEBAR_TITLE = "AI Assist Memory"
 PANEL_SIDEBAR_ICON = "mdi:brain"
 PANEL_STATIC_BASE_URL = f"/api/{DOMAIN}/panel"
-PANEL_MODULE_URL = f"{PANEL_STATIC_BASE_URL}/claude-assist-memory-panel.js"
+PANEL_MODULE_URL = f"{PANEL_STATIC_BASE_URL}/ai-subscription-assist-memory-panel.js"
 
 DEFAULT = {
     CONF_CHAT_MODEL: "claude-haiku-4-5",

@@ -27,7 +27,7 @@ from .memory_contract import (
     WS_TYPE_SESSION_GET,
     WS_TYPE_SESSION_LIST,
 )
-from .memory_service import ClaudeAssistMemoryService
+from .memory_service import AiSubscriptionAssistMemoryService
 
 WS_ERR_DOMAIN = f"{DOMAIN}_error"
 WS_ERR_NOT_FOUND = "not_found"
@@ -38,7 +38,7 @@ def _domain_data(hass: HomeAssistant) -> dict[str, Any]:
     return hass.data.setdefault(DOMAIN, {})
 
 
-def _memory_services(hass: HomeAssistant) -> dict[str, ClaudeAssistMemoryService]:
+def _memory_services(hass: HomeAssistant) -> dict[str, AiSubscriptionAssistMemoryService]:
     services = _domain_data(hass).get(DATA_MEMORY_SERVICES)
     if isinstance(services, dict):
         return services
@@ -47,7 +47,7 @@ def _memory_services(hass: HomeAssistant) -> dict[str, ClaudeAssistMemoryService
 
 def _resolve_service(
     hass: HomeAssistant, config_entry_id: str | None
-) -> tuple[str, ClaudeAssistMemoryService]:
+) -> tuple[str, AiSubscriptionAssistMemoryService]:
     services = _memory_services(hass)
     if config_entry_id:
         selected = services.get(config_entry_id)
@@ -89,7 +89,7 @@ def _send_error(connection: ActiveConnection, msg: dict[str, Any], error: Except
 async def ws_entry_list(
     hass: HomeAssistant, connection: ActiveConnection, msg: dict[str, Any]
 ) -> None:
-    """Return loaded claude_assist config entries and conversation subentries."""
+    """Return loaded ai_subscription_assist config entries and conversation subentries."""
     entries_payload: list[dict[str, Any]] = []
     for entry in hass.config_entries.async_entries(DOMAIN):
         subentries_payload: list[dict[str, Any]] = []

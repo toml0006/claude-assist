@@ -587,7 +587,7 @@ def async_register_api(hass: HomeAssistant):
         
         return tools
     
-    llm.async_register_api(hass, ClaudeAssistAPI(hass, async_get_tools))
+    llm.async_register_api(hass, AiSubscriptionAssistAPI(hass, async_get_tools))
 ```
 
 ---
