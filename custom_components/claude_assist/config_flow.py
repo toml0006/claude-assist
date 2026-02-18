@@ -462,58 +462,36 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose which provider backend to configure."""
-        errors: dict[str, str] = {}
+        """Choose which provider backend to configure.
 
-        if user_input is not None:
-            self._provider = cast(str, user_input.get(CONF_PROVIDER))
-            if self._provider == PROVIDER_CLAUDE_OAUTH:
-                return await self.async_step_claude_oauth()
-            if self._provider == PROVIDER_OPENAI:
-                return await self.async_step_openai()
-            if self._provider == PROVIDER_OPENAI_CODEX:
-                return await self.async_step_openai_codex()
-            if self._provider == PROVIDER_GOOGLE_GEMINI_CLI:
-                return await self.async_step_gemini_cli()
-            errors["base"] = "unknown"
+        Use an explicit menu instead of a selector default to avoid accidental
+        fallback to Claude when frontend selector payloads are missing/invalid.
+        """
+        self._provider = None
+        self._code_verifier = None
+        self._state = None
 
-        return self.async_show_form(
+        return self.async_show_menu(
             step_id="user",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(CONF_PROVIDER, default=PROVIDER_CLAUDE_OAUTH): SelectSelector(
-                        SelectSelectorConfig(
-                            options=[
-                                SelectOptionDict(
-                                    label="Claude Pro/Max",
-                                    value=PROVIDER_CLAUDE_OAUTH,
-                                ),
-                                SelectOptionDict(
-                                    label="ChatGPT Plus/Pro",
-                                    value=PROVIDER_OPENAI_CODEX,
-                                ),
-                                SelectOptionDict(
-                                    label="Google AI Pro",
-                                    value=PROVIDER_GOOGLE_GEMINI_CLI,
-                                ),
-                                SelectOptionDict(
-                                    label="OpenAI API / compatible",
-                                    value=PROVIDER_OPENAI,
-                                ),
-                            ],
-                            mode=SelectSelectorMode.DROPDOWN,
-                        )
-                    ),
-                }
-            ),
-            errors=errors or None,
+            menu_options=[
+                "claude_oauth",
+                "openai_codex",
+                "gemini_cli",
+                "openai",
+            ],
         )
 
     async def async_step_claude_oauth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure Claude OAuth subscription provider."""
+        self._provider = PROVIDER_CLAUDE_OAUTH
         errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if not self._code_verifier:
+                errors["base"] = "flow_expired"
+                user_input = None
 
         if user_input is not None:
             entry_title = str(user_input.get(CONF_NAME) or "Claude")
@@ -601,9 +579,19 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                         ],
                     )
 
-        # Generate PKCE pair — state = verifier (matches Claude Code / pi-ai)
-        self._code_verifier, code_challenge = _generate_pkce_pair()
-        self._state = self._code_verifier
+        # Generate PKCE pair once per flow instance.
+        if not self._code_verifier or not self._state:
+            self._code_verifier, code_challenge = _generate_pkce_pair()
+            self._state = self._code_verifier
+        else:
+            code_challenge_digest = hashlib.sha256(
+                self._code_verifier.encode("ascii")
+            ).digest()
+            code_challenge = (
+                base64.urlsafe_b64encode(code_challenge_digest)
+                .rstrip(b"=")
+                .decode("ascii")
+            )
 
         auth_params = urlencode(
             {
@@ -638,6 +626,7 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure OpenAI (or OpenAI-compatible) provider."""
+        self._provider = PROVIDER_OPENAI
         errors: dict[str, str] = {}
 
         if user_input is not None:
@@ -702,7 +691,13 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure ChatGPT Plus/Pro OAuth subscription provider."""
+        self._provider = PROVIDER_OPENAI_CODEX
         errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if not self._code_verifier or not self._state:
+                errors["base"] = "flow_expired"
+                user_input = None
 
         if user_input is not None:
             entry_title = str(user_input.get(CONF_NAME) or "ChatGPT Plus/Pro")
@@ -787,9 +782,19 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                                 ],
                             )
 
-        # Generate PKCE pair and a random state value.
-        self._code_verifier, code_challenge = _generate_pkce_pair()
-        self._state = _generate_state()
+        # Generate PKCE/state once per flow instance.
+        if not self._code_verifier or not self._state:
+            self._code_verifier, code_challenge = _generate_pkce_pair()
+            self._state = _generate_state()
+        else:
+            code_challenge_digest = hashlib.sha256(
+                self._code_verifier.encode("ascii")
+            ).digest()
+            code_challenge = (
+                base64.urlsafe_b64encode(code_challenge_digest)
+                .rstrip(b"=")
+                .decode("ascii")
+            )
 
         auth_params = urlencode(
             {
@@ -826,7 +831,13 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Configure Google AI Pro OAuth subscription provider."""
+        self._provider = PROVIDER_GOOGLE_GEMINI_CLI
         errors: dict[str, str] = {}
+
+        if user_input is not None:
+            if not self._code_verifier or not self._state:
+                errors["base"] = "flow_expired"
+                user_input = None
 
         if user_input is not None:
             entry_title = str(user_input.get(CONF_NAME) or "Google AI Pro")
@@ -935,9 +946,19 @@ class ClaudeAssistConfigFlow(ConfigFlow, domain=DOMAIN):
                                 ],
                             )
 
-        # Gemini CLI uses state == verifier in practice; we keep it that way.
-        self._code_verifier, code_challenge = _generate_pkce_pair()
-        self._state = self._code_verifier
+        # Gemini CLI uses state == verifier in practice; keep it stable per flow.
+        if not self._code_verifier or not self._state:
+            self._code_verifier, code_challenge = _generate_pkce_pair()
+            self._state = self._code_verifier
+        else:
+            code_challenge_digest = hashlib.sha256(
+                self._code_verifier.encode("ascii")
+            ).digest()
+            code_challenge = (
+                base64.urlsafe_b64encode(code_challenge_digest)
+                .rstrip(b"=")
+                .decode("ascii")
+            )
 
         auth_params = urlencode(
             {

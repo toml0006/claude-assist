@@ -7,6 +7,7 @@
       "unknown": "Unexpected error occurred.",
       "no_auth_code": "Please enter the authorization code from the callback URL.",
       "invalid_state": "OAuth state mismatch. Please start over and try again.",
+      "flow_expired": "Setup session expired. Please start over and try again.",
       "google_project_required": "This Google account requires a Cloud project ID. Set a project and re-authenticate.",
       "token_exchange_failed": "Failed to exchange authorization code for tokens. The code may have expired — please try again."
     },

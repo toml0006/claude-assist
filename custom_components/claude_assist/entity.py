@@ -116,6 +116,11 @@ from .const import (
     PROVIDER_OPENAI_CODEX,
     PROVIDER_GOOGLE_GEMINI_CLI,
 )
+from .provider_errors import (
+    extract_provider_error_detail,
+    format_http_error_message,
+    format_rate_limited_message,
+)
 
 # Max number of back and forth with the LLM to generate a response
 MAX_TOOL_ITERATIONS = 10
@@ -1324,79 +1329,112 @@ class ClaudeAssistBaseLLMEntity(Entity):
                 | conversation.ToolResultContentDeltaDict
             ]:
                 yield {"role": "assistant"}
-                async with http_client.stream(
-                    "POST",
-                    url,
-                    headers=headers,
-                    json=body,
-                ) as resp:
-                    resp.raise_for_status()
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        json_str = line[5:].strip()
-                        if not json_str:
-                            continue
+                try:
+                    async with http_client.stream(
+                        "POST",
+                        url,
+                        headers=headers,
+                        json=body,
+                    ) as resp:
                         try:
-                            chunk = json.loads(json_str)
-                        except Exception:
-                            continue
-
-                        response_data = chunk.get("response")
-                        if not isinstance(response_data, dict):
-                            continue
-
-                        candidate = None
-                        candidates = response_data.get("candidates")
-                        if isinstance(candidates, list) and candidates:
-                            candidate = candidates[0]
-                        if not isinstance(candidate, dict):
-                            continue
-
-                        content_obj = candidate.get("content")
-                        if isinstance(content_obj, dict):
-                            parts = content_obj.get("parts")
-                            if isinstance(parts, list):
-                                for part in parts:
-                                    if not isinstance(part, dict):
-                                        continue
-                                    if isinstance(part.get("text"), str):
-                                        yield {"content": part["text"]}
-                                    function_call = part.get("functionCall")
-                                    if isinstance(function_call, dict):
-                                        name = function_call.get("name")
-                                        args = function_call.get("args") or {}
-                                        call_id = function_call.get("id") or f"call_{len(tool_inputs)+1}"
-                                        if (
-                                            output_tool
-                                            and isinstance(name, str)
-                                            and name == output_tool
-                                        ):
-                                            yield {"content": json_dumps(args)}
-                                            continue
-                                        if isinstance(name, str) and name:
-                                            tool_inputs.append(
-                                                llm.ToolInput(
-                                                    id=str(call_id),
-                                                    tool_name=name,
-                                                    tool_args=args
-                                                    if isinstance(args, dict)
-                                                    else {},
-                                                    external=False,
-                                                )
-                                            )
-                                            yield {"tool_calls": tool_inputs[-1:]}
-
-                        usage_meta = response_data.get("usageMetadata")
-                        if isinstance(usage_meta, dict):
-                            chat_log.async_trace(
-                                {
-                                    "stats": {
-                                        "input_tokens": usage_meta.get("promptTokenCount", 0),
-                                        "output_tokens": usage_meta.get("candidatesTokenCount", 0),
-                                    }
-                                }
+                            resp.raise_for_status()
+                        except httpx.HTTPStatusError as err:
+                            payload = await err.response.aread()
+                            detail = extract_provider_error_detail(
+                                payload,
+                                content_type=err.response.headers.get("Content-Type"),
                             )
+                            if err.response.status_code == 429:
+                                raise HomeAssistantError(
+                                    format_rate_limited_message(
+                                        "Gemini",
+                                        retry_after=err.response.headers.get(
+                                            "Retry-After"
+                                        ),
+                                        detail=detail,
+                                    )
+                                ) from err
+                            raise HomeAssistantError(
+                                format_http_error_message(
+                                    "Gemini", err.response.status_code
+                                )
+                            ) from err
+
+                        async for line in resp.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            json_str = line[5:].strip()
+                            if not json_str:
+                                continue
+                            try:
+                                chunk = json.loads(json_str)
+                            except Exception:
+                                continue
+
+                            response_data = chunk.get("response")
+                            if not isinstance(response_data, dict):
+                                continue
+
+                            candidate = None
+                            candidates = response_data.get("candidates")
+                            if isinstance(candidates, list) and candidates:
+                                candidate = candidates[0]
+                            if not isinstance(candidate, dict):
+                                continue
+
+                            content_obj = candidate.get("content")
+                            if isinstance(content_obj, dict):
+                                parts = content_obj.get("parts")
+                                if isinstance(parts, list):
+                                    for part in parts:
+                                        if not isinstance(part, dict):
+                                            continue
+                                        if isinstance(part.get("text"), str):
+                                            yield {"content": part["text"]}
+                                        function_call = part.get("functionCall")
+                                        if isinstance(function_call, dict):
+                                            name = function_call.get("name")
+                                            args = function_call.get("args") or {}
+                                            call_id = function_call.get("id") or f"call_{len(tool_inputs)+1}"
+                                            if (
+                                                output_tool
+                                                and isinstance(name, str)
+                                                and name == output_tool
+                                            ):
+                                                yield {"content": json_dumps(args)}
+                                                continue
+                                            if isinstance(name, str) and name:
+                                                tool_inputs.append(
+                                                    llm.ToolInput(
+                                                        id=str(call_id),
+                                                        tool_name=name,
+                                                        tool_args=args
+                                                        if isinstance(args, dict)
+                                                        else {},
+                                                        external=False,
+                                                    )
+                                                )
+                                                yield {"tool_calls": tool_inputs[-1:]}
+
+                            usage_meta = response_data.get("usageMetadata")
+                            if isinstance(usage_meta, dict):
+                                chat_log.async_trace(
+                                    {
+                                        "stats": {
+                                            "input_tokens": usage_meta.get(
+                                                "promptTokenCount", 0
+                                            ),
+                                            "output_tokens": usage_meta.get(
+                                                "candidatesTokenCount", 0
+                                            ),
+                                        }
+                                    }
+                                )
+                except httpx.HTTPError as err:
+                    raise HomeAssistantError(
+                        "Sorry, I had a network problem talking to Gemini. "
+                        "Please try again."
+                    ) from err
 
             async for _content in chat_log.async_add_delta_content_stream(
                 self.entity_id, _delta_stream()

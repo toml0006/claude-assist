@@ -12,3 +12,14 @@ services:
       # Mount the integration from the repo into HA's config dir.
       - ../custom_components/claude_assist:/config/custom_components/claude_assist
     restart: unless-stopped
+
+  printer_keepalive:
+    build:
+      context: /Users/jackson/dev/smarthome/homelab-config/home-assistant-addons/printer_keepalive
+    container_name: claude-assist-printer-keepalive
+    environment:
+      - TZ=America/Los_Angeles
+    volumes:
+      - /Users/jackson/dev/smarthome/homelab-config/home-assistant-addons/printer_keepalive/app.py:/app/app.py
+      - ./printer_keepalive/data:/data
+    restart: unless-stopped

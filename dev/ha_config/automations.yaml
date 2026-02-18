@@ -19,3 +19,21 @@
         entity_id: input_number.dev_power
       data:
         value: "{{ range(0, 2000) | random }}"
+
+- id: printer_keepalive_scheduled_print
+  alias: "Printer: Scheduled Keepalive Print"
+  trigger:
+    - platform: time
+      at: "09:00:00"
+  condition:
+    - condition: state
+      entity_id: input_boolean.printer_keepalive_enabled
+      state: "on"
+    - condition: time
+      weekday:
+        - mon
+        - thu
+  action:
+    - action: script.printer_keepalive_print_page
+      data:
+        template: "{{ states('input_select.printer_keepalive_template') }}"

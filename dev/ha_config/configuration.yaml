@@ -22,6 +22,9 @@ shopping_list:
 input_boolean:
   dev_flag:
     name: Dev Flag
+  printer_keepalive_enabled:
+    name: Printer Keepalive Enabled
+    icon: mdi:printer-check
 
 input_number:
   dev_power:
@@ -40,5 +43,31 @@ template:
         device_class: power
         state_class: measurement
         state: "{{ states('input_number.dev_power') | float(0) }}"
+
+input_select:
+  printer_keepalive_template:
+    name: Printer Keepalive Template
+    icon: mdi:file-document-outline
+    options:
+      - home_summary
+      - weather_snapshot
+      - entity_report
+      - hybrid
+      - color_bars
+    initial: home_summary
+
+rest_command:
+  printer_keepalive_print:
+    url: "http://printer_keepalive:8099/print?template={{ template | default(states('input_select.printer_keepalive_template'), true) | urlencode }}"
+    method: POST
+    timeout: 120
+
+script:
+  printer_keepalive_print_page:
+    alias: Printer Keepalive Print Page
+    sequence:
+      - action: rest_command.printer_keepalive_print
+        data:
+          template: "{{ template | default(states('input_select.printer_keepalive_template'), true) }}"
 
 automation: !include automations.yaml

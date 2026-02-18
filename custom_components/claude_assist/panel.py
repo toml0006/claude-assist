@@ -37,17 +37,28 @@ async def async_setup_memory_panel(hass: HomeAssistant) -> None:
         [StaticPathConfig(PANEL_STATIC_BASE_URL, str(static_dir), False)]
     )
 
-    await async_register_panel(
-        hass,
-        frontend_url_path=PANEL_URL_PATH,
-        webcomponent_name=PANEL_COMPONENT_NAME,
-        module_url=PANEL_MODULE_URL,
-        sidebar_title=PANEL_SIDEBAR_TITLE,
-        sidebar_icon=PANEL_SIDEBAR_ICON,
-        config={"domain": DOMAIN},
-        require_admin=False,
-        update=True,
-    )
+    panel_kwargs = {
+        "frontend_url_path": PANEL_URL_PATH,
+        "webcomponent_name": PANEL_COMPONENT_NAME,
+        "module_url": PANEL_MODULE_URL,
+        "sidebar_title": PANEL_SIDEBAR_TITLE,
+        "sidebar_icon": PANEL_SIDEBAR_ICON,
+        "config": {"domain": DOMAIN},
+        "require_admin": False,
+    }
+
+    # HA API compatibility: some versions support update=, some do not.
+    try:
+        await async_register_panel(
+            hass,
+            **panel_kwargs,
+            update=True,
+        )
+    except TypeError:
+        await async_register_panel(
+            hass,
+            **panel_kwargs,
+        )
     domain_data[DATA_MEMORY_PANEL_REGISTERED] = True
 
 

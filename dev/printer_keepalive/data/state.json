@@ -1,0 +1,43 @@
+{
+  "last_error": "ipptool: Unable to connect to \"REPLACE_WITH_PRINTER_IP\" on port 631 - Name or service not known",
+  "last_result": "failed",
+  "last_run_at": "2026-02-17T00:19:24.022747+00:00",
+  "last_source": "api",
+  "last_success_at": "",
+  "last_template": "color_bars",
+  "next_scheduled_run": "",
+  "printers": {
+    "primary_printer": {
+      "cadence_hours_override": null,
+      "enabled_override": null,
+      "external_print_count": 0,
+      "history_anchor_at": "2026-02-17T00:38:06.468625+00:00",
+      "job_impressions_completed": null,
+      "keepalive_print_count": 0,
+      "last_error": "ipptool: Unable to connect to \"REPLACE_WITH_PRINTER_IP\" on port 631 - Name or service not known",
+      "last_external_print_at": "",
+      "last_keepalive_at": "",
+      "last_keepalive_attempt_at": "",
+      "last_keepalive_error": "",
+      "last_keepalive_result": "never",
+      "last_polled_at": "2026-02-18T15:02:01.590654+00:00",
+      "last_seen_job_impressions": null,
+      "marker_colors": [],
+      "marker_levels": [],
+      "marker_names": [],
+      "media_sheets_completed": null,
+      "printer_is_accepting_jobs": null,
+      "printer_make_and_model": "",
+      "printer_name": "",
+      "printer_state": "unknown",
+      "printer_state_message": "",
+      "printer_state_reasons": [],
+      "printer_up_time_seconds": null,
+      "printer_uuid": "",
+      "queued_job_count": null,
+      "template_override": ""
+    }
+  },
+  "runs_failed": 1,
+  "runs_total": 1
+}
