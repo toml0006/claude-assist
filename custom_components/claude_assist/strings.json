@@ -15,6 +15,12 @@
       "user": {
         "title": "Choose provider",
         "description": "Select which backend this AI Subscription Assist configuration should use.",
+        "menu_options": {
+          "claude_oauth": "Claude Pro/Max",
+          "openai_codex": "ChatGPT Plus/Pro/Business/Enterprise (Codex)",
+          "gemini_cli": "Google AI Pro (Gemini)",
+          "openai": "OpenAI / compatible (API key)"
+        },
         "data": {
           "provider": "Provider"
         }

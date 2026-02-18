@@ -97,6 +97,28 @@ You can install via HACS (recommended) or manually.
 
 Note: the integration domain/folder is currently still `claude_assist` for backwards compatibility.
 
+### Versioning and updates (HACS + Home Assistant)
+
+Home Assistant reads the integration version from:
+- `custom_components/claude_assist/manifest.json`
+
+HACS update detection is most reliable when each release is tagged and published on GitHub.
+
+To bump versions consistently, run:
+
+```bash
+./scripts/set_version.sh 1.3.2
+```
+
+Then release:
+
+```bash
+git add VERSION custom_components/claude_assist/manifest.json
+git commit -m "Release v1.3.2"
+git tag v1.3.2
+git push origin main --tags
+```
+
 ### Set up providers
 
 Repeat this once per provider/account you want (multiple config entries are supported):
