@@ -121,6 +121,7 @@ from .provider_errors import (
     format_http_error_message,
     format_rate_limited_message,
 )
+from .schema_sanitizer import sanitize_schema
 
 # Max number of back and forth with the LLM to generate a response
 MAX_TOOL_ITERATIONS = 10
@@ -133,7 +134,11 @@ def _format_tool(
     return ToolParam(
         name=tool.name,
         description=tool.description or "",
-        input_schema=convert(tool.parameters, custom_serializer=custom_serializer),
+        # The Anthropic API rejects anyOf/oneOf/allOf at the top level of
+        # input_schema, which vol.Any(...) tool parameters produce.
+        input_schema=sanitize_schema(
+            convert(tool.parameters, custom_serializer=custom_serializer)
+        ),
     )
 
 
@@ -1599,11 +1604,13 @@ class AiSubscriptionAssistBaseLLMEntity(Entity):
                 ToolParam(
                     name=structure_name,
                     description="Use this tool to reply to the user",
-                    input_schema=convert(
-                        structure,
-                        custom_serializer=chat_log.llm_api.custom_serializer
-                        if chat_log.llm_api
-                        else llm.selector_serializer,
+                    input_schema=sanitize_schema(
+                        convert(
+                            structure,
+                            custom_serializer=chat_log.llm_api.custom_serializer
+                            if chat_log.llm_api
+                            else llm.selector_serializer,
+                        )
                     ),
                 )
             )
