@@ -1,3 +1,18 @@
+# New 
+
+Home Assistant 2026.9 switched its internal schema library from
+voluptuous to probatio. voluptuous_openapi does not recognize
+probatio's validator objects and returns its UNSUPPORTED sentinel
+for them, which is not JSON serializable. This caused every tool
+call to crash with:
+
+TypeError: Object of type _Unsupported is not JSON serializable
+when serializing dict item 'input_schema'
+
+Adds a _sanitize_unsupported() helper in entity.py that recursively
+replaces any UNSUPPORTED marker with a permissive {"type": "object"}
+schema before the tool definitions are sent to the Anthropic API.
+
 # ai-subscription-assist
 
 Use subscription-backed LLMs (OAuth) as **Home Assistant Assist conversation agents**:

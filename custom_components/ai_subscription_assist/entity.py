@@ -1,4 +1,5 @@
 """Base entity for AI Subscription Assist."""
+from __future__ import annotations
 
 import base64
 from collections.abc import AsyncGenerator, Callable, Iterable
@@ -73,7 +74,7 @@ from anthropic.types import (
 )
 from anthropic.types.message_create_params import MessageCreateParamsStreaming
 import voluptuous as vol
-from voluptuous_openapi import convert
+from voluptuous_openapi import UNSUPPORTED, convert
 
 from homeassistant.components import conversation
 from homeassistant.config_entries import ConfigSubentry
@@ -125,17 +126,32 @@ from .provider_errors import (
 # Max number of back and forth with the LLM to generate a response
 MAX_TOOL_ITERATIONS = 10
 
+def _sanitize_unsupported(value: Any) -> Any:
+    """Replace voluptuous_openapi UNSUPPORTED markers with a permissive schema.
+
+    Home Assistant 2026.9 switched from voluptuous to probatio internally;
+    voluptuous_openapi does not recognize probatio's validator objects and
+    returns its UNSUPPORTED sentinel, which is not JSON serializable.
+    """
+    if value is UNSUPPORTED or type(value).__name__ == "_Unsupported":
+        return {"type": "object"}
+    if isinstance(value, dict):
+        return {k: _sanitize_unsupported(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_sanitize_unsupported(v) for v in value]
+    return value
 
 def _format_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
 ) -> ToolParam:
     """Format tool specification."""
+    schema = convert(tool.parameters, custom_serializer=custom_serializer)
+    schema = _sanitize_unsupported(schema)
     return ToolParam(
         name=tool.name,
         description=tool.description or "",
-        input_schema=convert(tool.parameters, custom_serializer=custom_serializer),
+        input_schema=schema,
     )
-
 
 def _format_openai_tool(
     tool: llm.Tool, custom_serializer: Callable[[Any], Any] | None
