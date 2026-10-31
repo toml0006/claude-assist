@@ -100,7 +100,7 @@ async def ws_entry_list(
                 {
                     "subentry_id": subentry.subentry_id,
                     "title": subentry.title,
-                    "disabled": subentry.disabled_by is not None,
+                    "disabled": getattr(subentry, "disabled_by", None) is not None,
                 }
             )
 

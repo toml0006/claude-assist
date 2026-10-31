@@ -8,6 +8,6 @@
   "documentation": "https://github.com/toml0006/ai-subscription-assist",
   "integration_type": "service",
   "iot_class": "cloud_polling",
-  "requirements": ["anthropic==0.78.0", "httpx>=0.27.0"],
+  "requirements": ["anthropic==0.78.0", "httpx>=0.27.0", "voluptuous-openapi>=0.1.0"],
   "version": "1.3.1"
 }
